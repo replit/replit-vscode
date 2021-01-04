@@ -106,24 +106,38 @@ export class FS implements vscode.FileSystemProvider {
 
   async stat(uri: vscode.Uri): Promise<vscode.FileStat> {
     console.log('stat', uri.path);
-    console.log('fspath', uri.fsPath);
-    console.log(uri.toString());
-    if (uri.path === '/') {
-      return {
-        ctime: Date.now(),
-        mtime: Date.now(),
-        size: 0,
-        type: vscode.FileType.Directory
-      };
+    const filesChannel = await this.filesChanPromise;
+    const res = await filesChannel.request({
+      readdir: { path: uriToApiPath(uri) },
+    });
+
+    if (res.channelClosed) {
+      // TODO handle properly
+      throw vscode.FileSystemError.Unavailable();
     }
 
-    throw vscode.FileSystemError.FileNotFound();
+    if (res.error) {
+      throw new Error(res.error);
+    }
+
+    if (!res.statRes) {
+      throw new Error('expected stat result');
+    }
+
+    if (!res.statRes.exists) {
+      throw vscode.FileSystemError.FileNotFound();
+    }
+
+    return {
+      type: apiToVscodeFileType(res.statRes.type),
+      size: Number(res.statRes.size),
+      mtime: res.statRes.modTime * 1000,
+      // TODO we don't have ctime
+      ctime: res.statRes.modTime * 1000,
+    };
   }
 
   async writeFile(uri: vscode.Uri, content: Uint8Array, options: { create: boolean, overwrite: boolean }): Promise<void> {
     console.log('writeFile', uri.path, Buffer.from(content).toString('utf8'), options);
   }
-
-
-
 }
