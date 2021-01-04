@@ -1,5 +1,20 @@
 import * as vscode from 'vscode';
 import { Channel, Client } from '@replit/crosis';
+import { api } from '@replit/protocol';
+
+function uriToApiPath(uri: vscode.Uri): string {
+  // strip out leading slash, we can also add a dot before the slash
+  return uri.path.slice(1);
+}
+
+function apiToVscodeFileType(type: api.File.Type): vscode.FileType {
+  if (type === api.File.Type.DIRECTORY) {
+    return vscode.FileType.Directory;
+  }
+
+  // Our API doesn't support symlinks and other types
+  return vscode.FileType.File;
+}
 
 export class FS implements vscode.FileSystemProvider {
   private filesChanPromise: Promise<Channel>;
@@ -10,6 +25,7 @@ export class FS implements vscode.FileSystemProvider {
   constructor(client: Client<vscode.ExtensionContext>) {
     let resolveFilesChan: (filesChan: Channel) => void;
     this.filesChanPromise = new Promise((r) => (resolveFilesChan = r));
+    // TODO gcsfiles
     client.openChannel({ service: 'files' }, ({ channel }) => {
       if (!channel) {
         return;
@@ -24,10 +40,8 @@ export class FS implements vscode.FileSystemProvider {
 
     this.emitter = new vscode.EventEmitter<vscode.FileChangeEvent[]>();
     this.onDidChangeFile = this.emitter.event;
-  }
 
-  private uriToProtocolPath() {
-
+    // TODO open fsevents and snapshots
   }
 
   // What is this for?
@@ -45,12 +59,28 @@ export class FS implements vscode.FileSystemProvider {
 
   async readDirectory(uri: vscode.Uri): Promise<[string, vscode.FileType][]> {
     console.log('readDirectory', uri.path);
+    const filesChannel = await this.filesChanPromise;
+    const res = await filesChannel.request({
+      readdir: { path: uriToApiPath(uri) },
+    });
 
-    if (uri.path === '/') {
-      return [];
+    if (res.channelClosed) {
+      // TODO handle properly
+      throw vscode.FileSystemError.Unavailable();
     }
 
-    throw vscode.FileSystemError.FileNotFound();
+    if (res.error) {
+      // TODO parse res.error
+      throw vscode.FileSystemError.FileNotFound();
+    }
+
+    if (!res.files?.files) {
+      throw new Error('expected files.files');
+    }
+
+    // TODO do we subscribeFile here?
+
+    return res.files.files.map(({path, type}) => [path, apiToVscodeFileType(type)]);
   }
 
 
@@ -76,6 +106,8 @@ export class FS implements vscode.FileSystemProvider {
 
   async stat(uri: vscode.Uri): Promise<vscode.FileStat> {
     console.log('stat', uri.path);
+    console.log('fspath', uri.fsPath);
+    console.log(uri.toString());
     if (uri.path === '/') {
       return {
         ctime: Date.now(),
