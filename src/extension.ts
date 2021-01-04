@@ -7,10 +7,10 @@ import { w3cwebsocket } from 'websocket';
 import { FS } from './fs';
 
 function genConnectionMetadata() {
-	const { TOKEN_SECRET } = process.env;
+  const { TOKEN_SECRET } = process.env;
 
-	if (!TOKEN_SECRET) {
-		throw new Error('TOKEN_SECRET env var not found');
+  if (!TOKEN_SECRET) {
+    throw new Error('TOKEN_SECRET env var not found');
   }
 
   const opts = {
@@ -57,38 +57,48 @@ function genConnectionMetadata() {
 }
 
 export function activate(context: vscode.ExtensionContext) {
-		const client = new Client<vscode.ExtensionContext>();
+  const client = new Client<vscode.ExtensionContext>();
 
-		client.setUnrecoverableErrorHandler((e) => {
-			console.error(e);
-			vscode.window.showErrorMessage(e.message);
-		});
+  client.setUnrecoverableErrorHandler((e) => {
+    console.error(e);
+    vscode.window.showErrorMessage(e.message);
+  });
 
-		client.open({
-			fetchConnectionMetadata: async() => {
-				// TODO actually get connection metadata through API
-				return {
-					...genConnectionMetadata(),
-					error: null,
-				};
+  client.open(
+    {
+      fetchConnectionMetadata: async () => {
+        // TODO actually get connection metadata through API
+        return {
+          ...genConnectionMetadata(),
+          error: null,
+        };
       },
       // @ts-ignore we don't use addEventListener removeEventListener and dispatchEvent :)
       // eslint-disable-next-line
       WebSocketClass: w3cwebsocket as WebSocket,
-			context,
-		}, ({ channel }) => {
+      context,
+    },
+    ({ channel }) => {
       if (channel) {
         console.log('connected');
       } else {
         console.log('error while opening');
       }
-		});
+    },
+  );
 
-    const fs = new FS(client);
-    context.subscriptions.push(vscode.workspace.registerFileSystemProvider('replit', fs, { isCaseSensitive: true }));
+  const fs = new FS(client);
+  context.subscriptions.push(
+    vscode.workspace.registerFileSystemProvider('replit', fs, { isCaseSensitive: true }),
+  );
 
-    context.subscriptions.push(vscode.commands.registerCommand('replit.init', async () => {
-			// TOOD this should accept a repl and then connect
-			vscode.workspace.updateWorkspaceFolders(0, 0, { uri: vscode.Uri.parse('replit:/'), name: 'random testing repl' });
-    }));
+  context.subscriptions.push(
+    vscode.commands.registerCommand('replit.init', async () => {
+      // TOOD this should accept a repl and then connect
+      vscode.workspace.updateWorkspaceFolders(0, 0, {
+        uri: vscode.Uri.parse('replit:/'),
+        name: 'random testing repl',
+      });
+    }),
+  );
 }

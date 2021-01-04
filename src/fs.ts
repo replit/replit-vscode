@@ -146,8 +146,6 @@ export class FS implements vscode.FileSystemProvider {
       throw vscode.FileSystemError.FileNotFound(uri);
     }
 
-    console.log('statres');
-
     return {
       type: apiToVscodeFileType(res.statRes.type),
       size: Number(res.statRes.size),
