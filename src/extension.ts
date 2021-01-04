@@ -4,6 +4,7 @@ import * as crypto from 'crypto';
 import * as vscode from 'vscode';
 import { Client } from '@replit/crosis';
 import { w3cwebsocket } from 'websocket';
+import { FS } from './fs';
 
 function genConnectionMetadata() {
 	const { TOKEN_SECRET } = process.env;
@@ -83,4 +84,11 @@ export function activate(context: vscode.ExtensionContext) {
       }
 		});
 
+    const fs = new FS(client);
+    context.subscriptions.push(vscode.workspace.registerFileSystemProvider('replit', fs, { isCaseSensitive: true }));
+
+    context.subscriptions.push(vscode.commands.registerCommand('replit.init', async () => {
+			// TOOD this should accept a repl and then connect
+			vscode.workspace.updateWorkspaceFolders(0, 0, { uri: vscode.Uri.parse('replit:/'), name: 'random testing repl' });
+    }));
 }
