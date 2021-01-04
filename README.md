@@ -8,6 +8,7 @@ Open this repo in vscode:
 - Hit ctrl+shift+p, run `Replit init`
 
 # TODOS for launch:
+
 - fs watch and notifiers
 - fs delete
 - fs createDirectory
@@ -18,7 +19,7 @@ Open this repo in vscode:
 - proper ReadMe
 
 Future:
+
 - add replit shell to vscode terminal
 - running repls through `shellrun2` service
 - port forwarding through `socket` service
-
