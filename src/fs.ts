@@ -4,7 +4,7 @@ import { api } from '@replit/protocol';
 
 function uriToApiPath(uri: vscode.Uri): string {
   // strip out leading slash, we can also add a dot before the slash
-  return uri.path.slice(1);
+  return '.' + uri.path;
 }
 
 function apiToVscodeFileType(type: api.File.Type): vscode.FileType {
@@ -84,9 +84,26 @@ export class FS implements vscode.FileSystemProvider {
   }
 
   async readFile(uri: vscode.Uri): Promise<Uint8Array> {
-    console.log('readFile', uri.path);
+    const filesChannel = await this.filesChanPromise;
+    const res = await filesChannel.request({
+      read: { path: uriToApiPath(uri) },
+    });
 
-    throw vscode.FileSystemError.FileNotFound();
+    if (res.channelClosed) {
+      // TODO handle properly
+      throw vscode.FileSystemError.Unavailable(uri);
+    }
+
+    if (res.error) {
+      // TODO parse res.error
+      throw vscode.FileSystemError.FileNotFound(uri);
+    }
+
+    if (!res.file || !res.file.path || !res.file.content) {
+      throw new Error('Expected file');
+    }
+
+    return res.file.content;
   }
 
   async delete(uri: vscode.Uri): Promise<void> {
@@ -129,6 +146,8 @@ export class FS implements vscode.FileSystemProvider {
       throw vscode.FileSystemError.FileNotFound(uri);
     }
 
+    console.log('statres');
+
     return {
       type: apiToVscodeFileType(res.statRes.type),
       size: Number(res.statRes.size),
@@ -143,6 +162,7 @@ export class FS implements vscode.FileSystemProvider {
     content: Uint8Array,
     options: { create: boolean; overwrite: boolean },
   ): Promise<void> {
+    console.log('writeFile', uri.path, Buffer.from(content).toString('utf8'), options);
     const filesChannel = await this.filesChanPromise;
     const { statRes } = await filesChannel.request({
       stat: { path: uriToApiPath(uri) },
