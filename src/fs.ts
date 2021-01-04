@@ -50,7 +50,7 @@ export class FS implements vscode.FileSystemProvider {
   watch(uri: vscode.Uri): vscode.Disposable {
     console.log('watch', uri.path);
     // What is this for?
-    return new vscode.Disposable(() => { });
+    return new vscode.Disposable(() => {});
   }
 
   async createDirectory(uri: vscode.Uri): Promise<void> {
@@ -66,12 +66,12 @@ export class FS implements vscode.FileSystemProvider {
 
     if (res.channelClosed) {
       // TODO handle properly
-      throw vscode.FileSystemError.Unavailable();
+      throw vscode.FileSystemError.Unavailable(uri);
     }
 
     if (res.error) {
       // TODO parse res.error
-      throw vscode.FileSystemError.FileNotFound();
+      throw vscode.FileSystemError.FileNotFound(uri);
     }
 
     if (!res.files?.files) {
@@ -80,9 +80,8 @@ export class FS implements vscode.FileSystemProvider {
 
     // TODO do we subscribeFile here?
 
-    return res.files.files.map(({path, type}) => [path, apiToVscodeFileType(type)]);
+    return res.files.files.map(({ path, type }) => [path, apiToVscodeFileType(type)]);
   }
-
 
   async readFile(uri: vscode.Uri): Promise<Uint8Array> {
     console.log('readFile', uri.path);
@@ -94,11 +93,13 @@ export class FS implements vscode.FileSystemProvider {
     console.log('delete', uri.path);
 
     throw vscode.FileSystemError.FileNotFound();
-
   }
 
-
-  async rename(oldUri: vscode.Uri, newUri: vscode.Uri, options: { overwrite: boolean }): Promise<void> {
+  async rename(
+    oldUri: vscode.Uri,
+    newUri: vscode.Uri,
+    options: { overwrite: boolean },
+  ): Promise<void> {
     console.log('rename', oldUri.path, newUri.path, options);
 
     throw vscode.FileSystemError.FileNotFound();
@@ -108,12 +109,12 @@ export class FS implements vscode.FileSystemProvider {
     console.log('stat', uri.path);
     const filesChannel = await this.filesChanPromise;
     const res = await filesChannel.request({
-      readdir: { path: uriToApiPath(uri) },
+      stat: { path: uriToApiPath(uri) },
     });
 
     if (res.channelClosed) {
       // TODO handle properly
-      throw vscode.FileSystemError.Unavailable();
+      throw vscode.FileSystemError.Unavailable(uri);
     }
 
     if (res.error) {
@@ -125,7 +126,7 @@ export class FS implements vscode.FileSystemProvider {
     }
 
     if (!res.statRes.exists) {
-      throw vscode.FileSystemError.FileNotFound();
+      throw vscode.FileSystemError.FileNotFound(uri);
     }
 
     return {
@@ -137,7 +138,47 @@ export class FS implements vscode.FileSystemProvider {
     };
   }
 
-  async writeFile(uri: vscode.Uri, content: Uint8Array, options: { create: boolean, overwrite: boolean }): Promise<void> {
-    console.log('writeFile', uri.path, Buffer.from(content).toString('utf8'), options);
+  async writeFile(
+    uri: vscode.Uri,
+    content: Uint8Array,
+    options: { create: boolean; overwrite: boolean },
+  ): Promise<void> {
+    const filesChannel = await this.filesChanPromise;
+    const { statRes } = await filesChannel.request({
+      stat: { path: uriToApiPath(uri) },
+    });
+
+    if (!statRes) {
+      throw new Error('expected stat result');
+    }
+
+    if (statRes.exists && statRes.type === api.File.Type.DIRECTORY) {
+      throw vscode.FileSystemError.FileIsADirectory(uri);
+    }
+
+    if (!statRes.exists && !options.create) {
+      // Doesn't have create option but file is not found
+      throw vscode.FileSystemError.FileNotFound(uri);
+    }
+
+    if (statRes.exists && !options.overwrite) {
+      throw vscode.FileSystemError.FileExists(uri);
+    }
+
+    const res = await filesChannel.request({
+      write: { path: uriToApiPath(uri), content: content },
+    });
+
+    if (res.channelClosed) {
+      // TODO handle properly
+      throw vscode.FileSystemError.Unavailable(uri);
+    }
+
+    if (res.error) {
+      // TODO parse res.error
+      throw vscode.FileSystemError.FileNotFound(uri);
+    }
+
+    // TODO emit vscode.FileChangeType.Created and vscode.FileChangeType.Changed
   }
 }
