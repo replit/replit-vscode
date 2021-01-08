@@ -31,40 +31,35 @@ export const performDataRequest = async (
   repl: string
 ): Promise<any> => {
   let r: Response | undefined = undefined;
-  try {
-    r = await fetch(`https://repl.it/data/repls/@${user}/${repl}`, {
-      headers: {
-        accept: "application/json",
-        "user-agent": "ezcrosis",
-        "x-requested-with": "ezcrosis",
-      },
-    });
-    if (r && r.status !== 200) {
-      let text;
-      try {
-        text = await r.text();
-      } catch (e) {
-        text = "";
-      }
-      throw new Error(
-        `Got invalid status ${
-          r.status
-        } while fetching data for @${user}/${repl}, data: ${JSON.stringify(
-          text
-        )}`
-      );
-    }
-    return r.json();
 
-    return data;
-  } catch (e) {
-    if (r && r.status === 404) {
-      const err = new ReplNotFoundError("Repl not found");
-      err.user = user;
-      err.repl = repl;
+  r = await fetch(`https://repl.it/data/repls/@${user}/${repl}`, {
+    headers: {
+      accept: "application/json",
+      "user-agent": "ezcrosis",
+      "x-requested-with": "ezcrosis",
+    },
+  });
+  if (r && r.status !== 200) {
+    let text;
+    try {
+      text = await r.text();
+    } catch (e) {
+      text = "";
     }
-    throw e;
+    throw new Error(
+      `Got invalid status ${
+        r.status
+      } while fetching data for @${user}/${repl}, data: ${JSON.stringify(text)}`
+    );
   }
+
+  if (r && r.status === 404) {
+    const err = new ReplNotFoundError("Repl not found");
+    err.user = user;
+    err.repl = repl;
+    throw err;
+  }
+  return r.json();
 };
 
 export async function getReplId(user: string, slug: string): Promise<string> {
