@@ -89,11 +89,26 @@ export class FS implements vscode.FileSystemProvider {
   watch(uri: vscode.Uri): vscode.Disposable {
     console.log('watch', uri.path);
     // What is this for?
-    return new vscode.Disposable(() => {});
+    return {
+      dispose: () => {},
+    };
   }
 
   async createDirectory(uri: vscode.Uri): Promise<void> {
-    console.log('createDirectory', uri.path);
+    const filesChannel = await this.filesChanPromise;
+    const res = await filesChannel.request({
+      mkdir: { path: uriToApiPath(uri) },
+    });
+
+    if (res.channelClosed) {
+      // TODO handle properly
+      throw vscode.FileSystemError.Unavailable(uri);
+    }
+
+    handleError(res.error, uri);
+
+    // emit vscode.FileChangeType.Created
+    // emit vscode.FileChangeType.Changed on parent
   }
 
   async readDirectory(uri: vscode.Uri): Promise<[string, vscode.FileType][]> {
@@ -230,6 +245,9 @@ export class FS implements vscode.FileSystemProvider {
 
     handleError(res.error, uri);
 
-    // TODO emit vscode.FileChangeType.Created and vscode.FileChangeType.Changed
+    // TODO
+    // if options.create emit vscode.FileChangeType.Created
+    // if options.create emit vscode.FileChangeType.Changed on parent
+    // emit vscode.FileChangeType.Changed
   }
 }
