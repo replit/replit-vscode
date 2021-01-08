@@ -245,16 +245,14 @@ const initialize = async (store: Options, ctx: vscode.ExtensionContext) => {
       WebSocketClass: ws as WebSocket,
     },
     () => {
-      (async () => {
-        console.log("Creating FS...");
-        const fs = new FS(client);
+      console.log("Creating FS...");
+      const fs = new FS(client);
 
-        ctx.subscriptions.push(
-          vscode.workspace.registerFileSystemProvider("replit", fs, {
-            isCaseSensitive: true,
-          })
-        );
-      })();
+      ctx.subscriptions.push(
+        vscode.workspace.registerFileSystemProvider("replit", fs, {
+          isCaseSensitive: true,
+        })
+      );
     }
   );
 };
