@@ -224,8 +224,18 @@ const initialize = async (store: Options, ctx: vscode.ExtensionContext) => {
       // @ts-ignore we don't use addEventListener removeEventListener and dispatchEvent :)
       WebSocketClass: ws as WebSocket,
     },
-    () => {
-      // TODO connecting messages
+    (result) => {
+      if (result.channel) {
+        vscode.window.showInformationMessage('Repl.it: Connected');
+      }
+
+      return ({ willReconnect }) => {
+        if (willReconnect) {
+          vscode.window.showWarningMessage('Repl.it: Unexpected disconnect, reconnecting...');
+        } else {
+          vscode.window.showWarningMessage('Repl.it: Disconnected');
+        }
+      };
     },
   );
 };
