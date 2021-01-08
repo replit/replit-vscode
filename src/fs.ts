@@ -89,11 +89,26 @@ export class FS implements vscode.FileSystemProvider {
   watch(uri: vscode.Uri): vscode.Disposable {
     console.log('watch', uri.path);
     // What is this for?
-    return new vscode.Disposable(() => {});
+    return {
+      dispose: () => {},
+    };
   }
 
   async createDirectory(uri: vscode.Uri): Promise<void> {
-    console.log('createDirectory', uri.path);
+    const filesChannel = await this.filesChanPromise;
+    const res = await filesChannel.request({
+      mkdir: { path: uriToApiPath(uri) },
+    });
+
+    if (res.channelClosed) {
+      // TODO handle properly
+      throw vscode.FileSystemError.Unavailable(uri);
+    }
+
+    handleError(res.error, uri);
+
+    // emit vscode.FileChangeType.Created
+    // emit vscode.FileChangeType.Changed on parent
   }
 
   async readDirectory(uri: vscode.Uri): Promise<[string, vscode.FileType][]> {
@@ -139,10 +154,25 @@ export class FS implements vscode.FileSystemProvider {
     return res.file.content;
   }
 
-  async delete(uri: vscode.Uri): Promise<void> {
-    console.log('delete', uri.path);
+  async delete(uri: vscode.Uri, _options: { recursive: boolean }): Promise<void> {
+    // Ignoring recursive option for now. I'm not sure when vscode would
+    // ask us to delete a directory non-recursively, and what is the correct
+    // behavior if the directory has contents and we don't have a recursive option
+    const filesChannel = await this.filesChanPromise;
+    const res = await filesChannel.request({
+      remove: { path: uriToApiPath(uri) },
+    });
 
-    throw vscode.FileSystemError.FileNotFound();
+    if (res.channelClosed) {
+      // TODO handle properly
+      throw vscode.FileSystemError.Unavailable(uri);
+    }
+
+    handleError(res.error, uri);
+
+    // TODO
+    // emit vscode.FileChangeType.Changed for parent directory
+    // emit vscode.FileChangeType.Deleted
   }
 
   async rename(
@@ -150,9 +180,49 @@ export class FS implements vscode.FileSystemProvider {
     newUri: vscode.Uri,
     options: { overwrite: boolean },
   ): Promise<void> {
-    console.log('rename', oldUri.path, newUri.path, options);
+    console.log('rename', oldUri.path, newUri.path);
+    if (uriToApiPath(oldUri) === uriToApiPath(newUri)) {
+      return;
+    }
 
-    throw vscode.FileSystemError.FileNotFound();
+    const filesChannel = await this.filesChanPromise;
+
+    // replicate behaviour from vscode
+    // https://github.com/microsoft/vscode/blob/f4ab083c28ef1943c6636b8268e698bfc8614ee8/src/vs/platform/files/node/diskFileSystemProvider.ts#L436
+    // if the file exists:
+    // - overwrite is false, we throw an exists error
+    // - overwrite: is true, delete the file before moving
+    const { statRes } = await filesChannel.request({
+      stat: { path: uriToApiPath(newUri) },
+    });
+
+    if (!statRes) {
+      throw new Error('expected stat result');
+    }
+
+    if (statRes.exists) {
+      if (!options.overwrite) {
+        throw vscode.FileSystemError.FileExists(newUri);
+      }
+
+      await this.delete(newUri, { recursive: true });
+    }
+
+    const res = await filesChannel.request({
+      move: { oldPath: uriToApiPath(oldUri), newPath: uriToApiPath(newUri) },
+    });
+
+    if (res.channelClosed) {
+      // TODO handle properly
+      throw vscode.FileSystemError.Unavailable(oldUri);
+    }
+
+    handleError(res.error, oldUri);
+
+    // TODO
+    // vscode.FileChangeType.Deleted oldUri
+    // vscode.FileChangeType.Created newUri
+    // vscode.FileChangeType.Changed newUri and oldUri parents
   }
 
   async stat(uri: vscode.Uri): Promise<vscode.FileStat> {
@@ -230,6 +300,9 @@ export class FS implements vscode.FileSystemProvider {
 
     handleError(res.error, uri);
 
-    // TODO emit vscode.FileChangeType.Created and vscode.FileChangeType.Changed
+    // TODO
+    // if options.create emit vscode.FileChangeType.Created
+    // if options.create emit vscode.FileChangeType.Changed on parent
+    // emit vscode.FileChangeType.Changed
   }
 }
