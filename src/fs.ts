@@ -180,9 +180,49 @@ export class FS implements vscode.FileSystemProvider {
     newUri: vscode.Uri,
     options: { overwrite: boolean },
   ): Promise<void> {
-    console.log('rename', oldUri.path, newUri.path, options);
+    console.log('rename', oldUri.path, newUri.path);
+    if (uriToApiPath(oldUri) === uriToApiPath(newUri)) {
+      return;
+    }
 
-    throw vscode.FileSystemError.FileNotFound();
+    const filesChannel = await this.filesChanPromise;
+
+    // replicate behaviour from vscode
+    // https://github.com/microsoft/vscode/blob/f4ab083c28ef1943c6636b8268e698bfc8614ee8/src/vs/platform/files/node/diskFileSystemProvider.ts#L436
+    // if the file exists:
+    // - overwrite is false, we throw an exists error
+    // - overwrite: is true, delete the file before moving
+    const { statRes } = await filesChannel.request({
+      stat: { path: uriToApiPath(newUri) },
+    });
+
+    if (!statRes) {
+      throw new Error('expected stat result');
+    }
+
+    if (statRes.exists) {
+      if (!options.overwrite) {
+        throw vscode.FileSystemError.FileExists(newUri);
+      }
+
+      await this.delete(newUri, { recursive: true });
+    }
+
+    const res = await filesChannel.request({
+      move: { oldPath: uriToApiPath(oldUri), newPath: uriToApiPath(newUri) },
+    });
+
+    if (res.channelClosed) {
+      // TODO handle properly
+      throw vscode.FileSystemError.Unavailable(oldUri);
+    }
+
+    handleError(res.error, oldUri);
+
+    // TODO
+    // vscode.FileChangeType.Deleted oldUri
+    // vscode.FileChangeType.Created newUri
+    // vscode.FileChangeType.Changed newUri and oldUri parents
   }
 
   async stat(uri: vscode.Uri): Promise<vscode.FileStat> {
