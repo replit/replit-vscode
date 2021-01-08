@@ -37,5 +37,6 @@ module.exports = {
     'no-param-reassign': ['error', { props: false }],
     'object-curly-newline': 'off',
     'consistent-return': 'off',
+    'no-console': 'off',
   },
 };

@@ -1,5 +1,6 @@
 import { Channel, Client } from '@replit/crosis';
 import { api } from '@replit/protocol';
+import { posix as posixPath } from 'path';
 import * as vscode from 'vscode';
 
 function uriToApiPath(uri: vscode.Uri): string {
@@ -14,6 +15,10 @@ function apiToVscodeFileType(type: api.File.Type): vscode.FileType {
 
   // Our API doesn't support symlinks and other types
   return vscode.FileType.File;
+}
+
+function getParentURI(uri: vscode.Uri): vscode.Uri {
+  return vscode.Uri.parse(`replit://${posixPath.dirname(uri.path)}`);
 }
 
 function handleError(errStr: string, uri: vscode.Uri): null {
@@ -110,6 +115,7 @@ export class FS implements vscode.FileSystemProvider {
   // What is this for?
   // async copy() {}
 
+  // eslint-disable-next-line class-methods-use-this
   watch(uri: vscode.Uri): vscode.Disposable {
     console.log('watch', uri.path);
     // What is this for?
@@ -130,8 +136,10 @@ export class FS implements vscode.FileSystemProvider {
 
     handleError(res.error, uri);
 
-    // emit vscode.FileChangeType.Created
-    // emit vscode.FileChangeType.Changed on parent
+    this.emitter.fire([
+      { type: vscode.FileChangeType.Created, uri },
+      { type: vscode.FileChangeType.Changed, uri: getParentURI(uri) },
+    ]);
   }
 
   async readDirectory(uri: vscode.Uri): Promise<[string, vscode.FileType][]> {
@@ -175,6 +183,7 @@ export class FS implements vscode.FileSystemProvider {
     return res.file.content;
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   async delete(uri: vscode.Uri, _options: { recursive: boolean }): Promise<void> {
     // Ignoring recursive option for now. I'm not sure when vscode would
     // ask us to delete a directory non-recursively, and what is the correct
@@ -190,9 +199,10 @@ export class FS implements vscode.FileSystemProvider {
 
     handleError(res.error, uri);
 
-    // TODO
-    // emit vscode.FileChangeType.Changed for parent directory
-    // emit vscode.FileChangeType.Deleted
+    this.emitter.fire([
+      { type: vscode.FileChangeType.Deleted, uri },
+      { type: vscode.FileChangeType.Changed, uri: getParentURI(uri) },
+    ]);
   }
 
   async rename(
@@ -248,6 +258,12 @@ export class FS implements vscode.FileSystemProvider {
     // vscode.FileChangeType.Deleted oldUri
     // vscode.FileChangeType.Created newUri
     // vscode.FileChangeType.Changed newUri and oldUri parents
+    this.emitter.fire([
+      { type: vscode.FileChangeType.Deleted, uri: oldUri },
+      { type: vscode.FileChangeType.Created, uri: newUri },
+      { type: vscode.FileChangeType.Changed, uri: getParentURI(oldUri) },
+      { type: vscode.FileChangeType.Changed, uri: getParentURI(newUri) },
+    ]);
   }
 
   async stat(uri: vscode.Uri): Promise<vscode.FileStat> {
@@ -329,9 +345,15 @@ export class FS implements vscode.FileSystemProvider {
 
     handleError(res.error, uri);
 
-    // TODO
-    // if options.create emit vscode.FileChangeType.Created
-    // if options.create emit vscode.FileChangeType.Changed on parent
-    // emit vscode.FileChangeType.Changed
+    // Might as well do them all in one emit
+    const evts: vscode.FileChangeEvent[] = [];
+
+    if (options.create) {
+      evts.push({ type: vscode.FileChangeType.Created, uri });
+      evts.push({ type: vscode.FileChangeType.Changed, uri: getParentURI(uri) });
+    }
+    evts.push({ type: vscode.FileChangeType.Changed, uri });
+
+    this.emitter.fire(evts);
   }
 }
