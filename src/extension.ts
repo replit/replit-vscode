@@ -265,9 +265,11 @@ const initialize = async (store: Options, ctx: vscode.ExtensionContext) => {
         console.log("Creating FS...");
         const fs = new FS(client);
 
-        vscode.workspace.registerFileSystemProvider("replit", fs, {
-          isCaseSensitive: true,
-        });
+        ctx.subscriptions.push(
+          vscode.workspace.registerFileSystemProvider("replit", fs, {
+            isCaseSensitive: true,
+          })
+        );
 
         vscode.workspace.updateWorkspaceFolders(0, 0, {
           uri: vscode.Uri.parse("replit:/"),
@@ -279,7 +281,7 @@ const initialize = async (store: Options, ctx: vscode.ExtensionContext) => {
 };
 
 export async function activate(context: vscode.ExtensionContext) {
-  console.log("Creating options...");
+  console.log("Extension activating...");
   const store = await Options.create();
 
   context.subscriptions.push(
