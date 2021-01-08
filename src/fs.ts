@@ -25,20 +25,29 @@ export class FS implements vscode.FileSystemProvider {
 
   constructor(client: Client<vscode.ExtensionContext>) {
     let resolveFilesChan: (filesChan: Channel) => void;
-    this.filesChanPromise = new Promise((r) => {
-      resolveFilesChan = r;
+    let reject: (e: vscode.FileSystemError) => void;
+    this.filesChanPromise = new Promise((res, rej) => {
+      resolveFilesChan = res;
+      reject = rej;
     });
     // TODO gcsfiles
-    client.openChannel({ service: 'files' }, ({ channel }) => {
-      if (!channel) {
+    client.openChannel({ service: 'files' }, (result) => {
+      if (result.error) {
+        reject(vscode.FileSystemError.Unavailable());
+
         return;
       }
 
-      resolveFilesChan(channel);
+      resolveFilesChan(result.channel);
 
-      return () => {
-        this.filesChanPromise = new Promise((r) => {
-          resolveFilesChan = r;
+      return ({ willReconnect }) => {
+        if (!willReconnect) {
+          reject(vscode.FileSystemError.Unavailable());
+        }
+
+        this.filesChanPromise = new Promise((res, rej) => {
+          resolveFilesChan = res;
+          reject = rej;
         });
       };
     });
