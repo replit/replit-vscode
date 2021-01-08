@@ -19,7 +19,18 @@ async function getReplId(user: string, slug: string): Promise<string> {
       'x-requested-with': 'ezcrosis',
     },
   });
-  if (r && r.status !== 200) {
+
+  if (r.status === 404) {
+    throw new Error(
+      'Repl not found, did you make a typo? ' +
+        'If this is a private repl, go to ' +
+        `https://repl.it/data/repls/@${user}/${slug} ` +
+        'and find the part that looks like {"id": "COPY THIS"} and paste just the ID ' +
+        'back in the repl prompt.',
+    );
+  }
+
+  if (r.status !== 200) {
     let text;
     try {
       text = await r.text();
@@ -30,16 +41,6 @@ async function getReplId(user: string, slug: string): Promise<string> {
       `Got invalid status ${
         r.status
       } while fetching data for @${user}/${slug}, data: ${JSON.stringify(text)}`,
-    );
-  }
-
-  if (r && r.status === 404) {
-    throw new Error(
-      'Repl not found, did you make a typo? ' +
-        'If this is a private repl, go to ' +
-        `https://repl.it/data/repls/@${user}/${slug} ` +
-        'and find the part that looks like {"id": "COPY THIS"} and paste just the ID ' +
-        'back in the repl prompt.',
     );
   }
 
