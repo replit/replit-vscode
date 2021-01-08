@@ -1,3 +1,4 @@
+/* eslint-disable class-methods-use-this */
 import { Channel, Client } from '@replit/crosis';
 import { api } from '@replit/protocol';
 import { posix as posixPath } from 'path';
@@ -89,7 +90,7 @@ export class FS implements vscode.FileSystemProvider {
   }
 
   // This is called when we want to retry after we get channelClosed
-  // eslint-disable-next-line class-methods-use-this
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private async callSoon<Fn extends (...args: never[]) => Promise<any>>(
     fn: Fn,
     ...params: Parameters<Fn>
