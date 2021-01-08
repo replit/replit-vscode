@@ -186,7 +186,7 @@ async function fetchToken(
     );
   }
 
-  if (!res || (res as any).status !== 200 || typeof res !== "string") {
+  if (typeof res !== "string") {
     const err = new TokenFetchError(`Invalid token response: ${res}`);
     err.res = res;
     throw err;
