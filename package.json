@@ -55,6 +55,6 @@
   "dependencies": {
     "@replit/crosis": "^6.0.4",
     "@replit/protocol": "^0.2.16",
-    "ezcrosis": "^0.3.1"
+    "ezcrosis": "^0.3.2"
   }
 }
