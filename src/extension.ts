@@ -54,18 +54,7 @@ export const performDataRequest = async (
         )}`
       );
     }
-    const text = await r.text();
-
-    let data;
-    try {
-      data = JSON.parse(text);
-    } catch (e) {
-      throw new Error(
-        `Invalid JSON while fetching data for @${user}/${repl}: ${JSON.stringify(
-          text
-        )}`
-      );
-    }
+    return r.json();
 
     return data;
   } catch (e) {
