@@ -200,6 +200,7 @@ const initialize = async (store: Options, ctx: vscode.ExtensionContext) => {
   client.open(
     {
       context: ctx,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       fetchToken: async (abortSignal: any) => {
         let token;
         try {
@@ -229,7 +230,7 @@ const initialize = async (store: Options, ctx: vscode.ExtensionContext) => {
   );
 };
 
-export async function activate(context: vscode.ExtensionContext) {
+export async function activate(context: vscode.ExtensionContext): Promise<void> {
   console.log('Extension activating...');
   const store = await Options.create();
   console.log('Initializing...');
