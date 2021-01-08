@@ -21,7 +21,6 @@ module.exports = {
     indent: 'off',
     'function-paren-newline': 'off',
     'space-before-function-paren': 'off',
-    '@typescript-eslint/space-before-function-paren': ['error'],
     'no-restricted-syntax': ['error', 'LabeledStatement', 'WithStatement'],
     'no-await-in-loop': 'off',
     'implicit-arrow-linebreak': 'off', // conflicts with prettier
