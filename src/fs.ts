@@ -16,25 +16,29 @@ function apiToVscodeFileType(type: api.File.Type): vscode.FileType {
   return vscode.FileType.File;
 }
 
-function parseError(errStr: string, uri: vscode.Uri): vscode.FileSystemError | null {
+function handleError(errStr: string, uri: vscode.Uri): null {
+  if (!errStr) {
+    return null;
+  }
+
   if (errStr.includes('no such file or directory')) {
-    return vscode.FileSystemError.FileNotFound(uri);
+    throw vscode.FileSystemError.FileNotFound(uri);
   }
 
   if (errStr.includes('not a directory')) {
-    return vscode.FileSystemError.FileNotADirectory(uri);
+    throw vscode.FileSystemError.FileNotADirectory(uri);
   }
 
   if (errStr.includes('is a directory')) {
-    return vscode.FileSystemError.FileIsADirectory(uri);
+    throw vscode.FileSystemError.FileIsADirectory(uri);
   }
 
   if (errStr.includes('file exist')) {
-    return vscode.FileSystemError.FileExists(uri);
+    throw vscode.FileSystemError.FileExists(uri);
   }
 
   // Unknown error
-  return null;
+  throw new Error(errStr);
 }
 
 export class FS implements vscode.FileSystemProvider {
@@ -104,15 +108,7 @@ export class FS implements vscode.FileSystemProvider {
       throw vscode.FileSystemError.Unavailable(uri);
     }
 
-    if (res.error) {
-      const fsError = parseError(res.error, uri);
-
-      if (fsError) {
-        throw fsError;
-      } else {
-        throw new Error(res.error);
-      }
-    }
+    handleError(res.error, uri);
 
     if (!res.files?.files) {
       throw new Error('expected files.files');
@@ -134,15 +130,7 @@ export class FS implements vscode.FileSystemProvider {
       throw vscode.FileSystemError.Unavailable(uri);
     }
 
-    if (res.error) {
-      const fsError = parseError(res.error, uri);
-
-      if (fsError) {
-        throw fsError;
-      } else {
-        throw new Error(res.error);
-      }
-    }
+    handleError(res.error, uri);
 
     if (!res.file || !res.file.path || !res.file.content) {
       throw new Error('Expected file');
@@ -179,15 +167,7 @@ export class FS implements vscode.FileSystemProvider {
       throw vscode.FileSystemError.Unavailable(uri);
     }
 
-    if (res.error) {
-      const fsError = parseError(res.error, uri);
-
-      if (fsError) {
-        throw fsError;
-      } else {
-        throw new Error(res.error);
-      }
-    }
+    handleError(res.error, uri);
 
     if (!res.statRes) {
       throw new Error('expected stat result');
@@ -243,15 +223,7 @@ export class FS implements vscode.FileSystemProvider {
       throw vscode.FileSystemError.Unavailable(uri);
     }
 
-    if (res.error) {
-      const fsError = parseError(res.error, uri);
-
-      if (fsError) {
-        throw fsError;
-      } else {
-        throw new Error(res.error);
-      }
-    }
+    handleError(res.error, uri);
 
     // TODO emit vscode.FileChangeType.Created and vscode.FileChangeType.Changed
   }
