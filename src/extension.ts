@@ -197,6 +197,14 @@ const initialize = async (store: Options, ctx: vscode.ExtensionContext) => {
     vscode.window.showErrorMessage(e.message);
   });
 
+  console.log('Creating FS...');
+  const fs = new FS(client);
+  ctx.subscriptions.push(
+    vscode.workspace.registerFileSystemProvider('replit', fs, {
+      isCaseSensitive: true,
+    }),
+  );
+
   client.open(
     {
       context: ctx,
@@ -217,14 +225,7 @@ const initialize = async (store: Options, ctx: vscode.ExtensionContext) => {
       WebSocketClass: ws as WebSocket,
     },
     () => {
-      console.log('Creating FS...');
-      const fs = new FS(client);
-
-      ctx.subscriptions.push(
-        vscode.workspace.registerFileSystemProvider('replit', fs, {
-          isCaseSensitive: true,
-        }),
-      );
+      // TODO connecting messages
     },
   );
 };
