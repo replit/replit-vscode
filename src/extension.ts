@@ -1,42 +1,22 @@
-"use strict";
+/* eslint-disable max-classes-per-file */
+import { Client } from '@replit/crosis';
+import fetch, { Response } from 'node-fetch';
+import { AbortSignal } from 'node-fetch/externals';
+import * as vscode from 'vscode';
+import ws from 'ws';
+import { FS } from './fs';
+import { Options } from './options';
 
-import { Client } from "@replit/crosis";
-import fetch, { Response } from "node-fetch";
-import { AbortSignal } from "node-fetch/externals";
-import * as vscode from "vscode";
-import ws from "ws";
-import { FS } from "./fs";
-import { Options } from "./options";
+const BAD_KEY_MSG = 'Please enter a valid crosis key';
 
-const BAD_KEY_MSG = "Please enter a valid crosis key";
-const REPL_NOT_FOUND_MSG = (err: ReplNotFoundError) =>
-  "Repl not found, did you make a typo? " +
-  "If this is a private repl, go to " +
-  `https://repl.it/data/repls/@${err.user}/${err.repl} ` +
-  `and find the part that looks like {"id": "COPY THIS"} and paste just the ID ` +
-  `back in the repl prompt.`;
+export const isReplId = (replId: string): boolean => !!replId && replId.split('-').length === 5;
 
-const eToString = (e: any) => (e && e.stack ? e.stack : e);
-
-export const isReplId = (replId: string): boolean =>
-  !!replId && replId.split("-").length === 5;
-
-export class ReplNotFoundError extends Error {
-  user: string;
-  repl: string;
-}
-
-export const performDataRequest = async (
-  user: string,
-  repl: string
-): Promise<any> => {
-  let r: Response | undefined = undefined;
-
-  r = await fetch(`https://repl.it/data/repls/@${user}/${repl}`, {
+async function getReplId(user: string, slug: string): Promise<string> {
+  const r: Response | undefined = await fetch(`https://repl.it/data/repls/@${user}/${slug}`, {
     headers: {
-      accept: "application/json",
-      "user-agent": "ezcrosis",
-      "x-requested-with": "ezcrosis",
+      accept: 'application/json',
+      'user-agent': 'ezcrosis',
+      'x-requested-with': 'ezcrosis',
     },
   });
   if (r && r.status !== 200) {
@@ -44,99 +24,90 @@ export const performDataRequest = async (
     try {
       text = await r.text();
     } catch (e) {
-      text = "";
+      text = '';
     }
     throw new Error(
       `Got invalid status ${
         r.status
-      } while fetching data for @${user}/${repl}, data: ${JSON.stringify(text)}`
+      } while fetching data for @${user}/${slug}, data: ${JSON.stringify(text)}`,
     );
   }
 
   if (r && r.status === 404) {
-    const err = new ReplNotFoundError("Repl not found");
-    err.user = user;
-    err.repl = repl;
-    throw err;
+    throw new Error(
+      'Repl not found, did you make a typo? ' +
+        'If this is a private repl, go to ' +
+        `https://repl.it/data/repls/@${user}/${slug} ` +
+        'and find the part that looks like {"id": "COPY THIS"} and paste just the ID ' +
+        'back in the repl prompt.',
+    );
   }
-  return r.json();
-};
 
-export async function getReplId(user: string, slug: string): Promise<string> {
-  const data = await performDataRequest(user, slug);
+  const data = await r.json();
 
-  if (data && data.id && typeof data.id === "string") {
+  if (data && typeof data.id === 'string') {
     return data.id;
   }
 
   throw new Error(`Invalid response received: ${data}`);
 }
 
-export async function parseRepl(
-  repl: string,
-  replIdGetter: (user: string, slug: string) => Promise<string> = getReplId
-): Promise<string | null> {
+export async function parseRepl(repl: string): Promise<string | null> {
   // If its a repl id, we're already done
   if (isReplId(repl)) return repl;
 
   // Check if user included full URL using a simple regex
-  const urlRegex = /http(?:s?):\/\/repl\.it\/(.+)/g;
+  const urlRegex = /http(?:s?):\/\/repl\.it\/@(.+)\/([^?\s#]+)/g;
   const match = urlRegex.exec(repl);
-  if (match) repl = match[1]; // the first group
+  if (!match) {
+    return null;
+  }
 
-  // Split user/author
-  const parts = repl.split("/");
-  if (parts.length !== 2) return null;
-  let [user, slug] = parts;
+  const [, user, slug] = match;
 
-  // Strip out @ from beginning of user
-  if (user[0] === "@") user = user.slice(1);
-  // user might include the full repl URL with #filename, strip that out
-  slug = slug.split("#")[0];
-
-  return replIdGetter(user, slug);
+  return getReplId(user, slug);
 }
 
 // Simple key regex. No need to be strict here.
-const validKey = (key: string): boolean =>
-  !!key && /[a-zA-Z0-9\/=]+:[a-zA-Z0-9\/=]+/.test(key);
+const validKey = (key: string): boolean => !!key && /[a-zA-Z0-9/=]+:[a-zA-Z0-9/=]+/.test(key);
 
 /*
 vscode.workspace.updateWorkspaceFolders(0, 0, {
     uri: vscode.Uri.parse("replit:/"),
     name: "random testing repl",
-  });*/
+  }); */
 
 const ensureKey = async (store: Options): Promise<string | null> => {
-  let nullableStoredKey: string | null;
+  let storedKey: string;
   try {
-    nullableStoredKey = await store.get("key");
+    const key = await store.get('key');
+    if (typeof key === 'string') {
+      storedKey = key;
+    } else {
+      storedKey = '';
+    }
   } catch (e) {
     console.error(e);
-    nullableStoredKey = null;
+    storedKey = '';
   }
-  // Ensure that the key is a string and not just arbitrary JSON
-  const storedKey: string =
-    typeof nullableStoredKey === "string" ? nullableStoredKey || "" : "";
 
   if (storedKey && validKey(storedKey)) {
     return storedKey;
-  } else {
-    const newKey = await vscode.window.showInputBox({
-      prompt: "Crosis API Key",
-      placeHolder: "Enter your api key from https://devs.turbio.repl.co",
-      value: storedKey || "",
-      ignoreFocusOut: true,
-      validateInput: (val) => (validKey(val) ? "" : BAD_KEY_MSG),
-    });
-
-    if (newKey && validKey(newKey)) {
-      await store.set({ key: newKey });
-      return newKey;
-    }
-
-    return null;
   }
+  const newKey = await vscode.window.showInputBox({
+    prompt: 'Crosis API Key',
+    placeHolder: 'Enter your api key from https://devs.turbio.repl.co',
+    value: storedKey || '',
+    ignoreFocusOut: true,
+    validateInput: (val) => (validKey(val) ? '' : BAD_KEY_MSG),
+  });
+
+  if (newKey && validKey(newKey)) {
+    await store.set({ key: newKey });
+    return newKey;
+  }
+
+  return null;
 };
 
 class TokenFetchError extends Error {
@@ -146,16 +117,16 @@ class TokenFetchError extends Error {
 async function fetchToken(
   abortSignal: AbortSignal,
   replId: string,
-  apiKey: string
+  apiKey: string,
 ): Promise<string> {
   const r = await fetch(`https://repl.it/api/v0/repls/${replId}/token`, {
     signal: abortSignal,
-    method: "POST",
+    method: 'POST',
     headers: {
-      accept: "application/json",
-      "content-Type": "application/json",
-      "user-agent": "ezcrosis",
-      "x-requested-with": "ezcrosis",
+      accept: 'application/json',
+      'content-Type': 'application/json',
+      'user-agent': 'ezcrosis',
+      'x-requested-with': 'ezcrosis',
     },
     body: JSON.stringify({ apiKey }),
   });
@@ -165,12 +136,10 @@ async function fetchToken(
   try {
     res = JSON.parse(text);
   } catch (e) {
-    throw new Error(
-      `Invalid JSON while fetching token for ${replId}: ${JSON.stringify(text)}`
-    );
+    throw new Error(`Invalid JSON while fetching token for ${replId}: ${JSON.stringify(text)}`);
   }
 
-  if (typeof res !== "string") {
+  if (typeof res !== 'string') {
     const err = new TokenFetchError(`Invalid token response: ${res}`);
     err.res = res;
     throw err;
@@ -186,14 +155,14 @@ const initialize = async (store: Options, ctx: vscode.ExtensionContext) => {
   if (!apiKey) return;
 
   let replId: string;
-  let storedId = ctx.workspaceState.get("replId");
+  const storedId = ctx.workspaceState.get('replId');
 
-  if (typeof storedId === "string") {
+  if (typeof storedId === 'string') {
     replId = storedId;
   } else {
     const newRepl = await vscode.window.showInputBox({
-      prompt: "Repl Name",
-      placeHolder: "Repl link, @user/repl string, or repl id",
+      prompt: 'Repl Name',
+      placeHolder: 'Repl link, @user/repl string, or repl id',
       ignoreFocusOut: true,
     });
 
@@ -203,18 +172,20 @@ const initialize = async (store: Options, ctx: vscode.ExtensionContext) => {
     try {
       newReplId = await parseRepl(newRepl);
     } catch (e) {
-      const msg =
-        e instanceof ReplNotFoundError ? REPL_NOT_FOUND_MSG : eToString(e);
-      vscode.window.showErrorMessage(msg);
+      vscode.window.showErrorMessage(e?.message || 'Error with no message, check console');
+
+      // eslint-disable-next-line no-console
+      console.error(e);
+
       return;
     }
 
     if (!newReplId) {
-      vscode.window.showErrorMessage("Invalid repl");
+      vscode.window.showErrorMessage('Invalid repl');
       return;
     }
 
-    await ctx.workspaceState.update("replId", newReplId);
+    await ctx.workspaceState.update('replId', newReplId);
     replId = newReplId;
   }
 
@@ -233,42 +204,42 @@ const initialize = async (store: Options, ctx: vscode.ExtensionContext) => {
         try {
           token = await fetchToken(abortSignal, replId, apiKey);
         } catch (e) {
-          if (e.name === "AbortError") {
+          if (e.name === 'AbortError') {
             return { aborted: true, token: null };
           }
           throw e;
         }
         return { token, aborted: false };
       },
-      // @ts-ignore we don't use addEventListener removeEventListener and dispatchEvent :)
       // eslint-disable-next-line
+      // @ts-ignore we don't use addEventListener removeEventListener and dispatchEvent :)
       WebSocketClass: ws as WebSocket,
     },
     () => {
-      console.log("Creating FS...");
+      console.log('Creating FS...');
       const fs = new FS(client);
 
       ctx.subscriptions.push(
-        vscode.workspace.registerFileSystemProvider("replit", fs, {
+        vscode.workspace.registerFileSystemProvider('replit', fs, {
           isCaseSensitive: true,
-        })
+        }),
       );
-    }
+    },
   );
 };
 
 export async function activate(context: vscode.ExtensionContext) {
-  console.log("Extension activating...");
+  console.log('Extension activating...');
   const store = await Options.create();
-  console.log("Initializing...");
+  console.log('Initializing...');
   await initialize(store, context);
 
   context.subscriptions.push(
-    vscode.commands.registerCommand("replit.init", () =>
+    vscode.commands.registerCommand('replit.init', () =>
       vscode.workspace.updateWorkspaceFolders(0, 0, {
-        uri: vscode.Uri.parse("replit:/"),
-        name: `Repl.it`,
-      })
-    )
+        uri: vscode.Uri.parse('replit:/'),
+        name: 'Repl.it',
+      }),
+    ),
   );
 }

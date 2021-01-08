@@ -1,10 +1,10 @@
-import { Channel, Client } from "@replit/crosis";
-import { api } from "@replit/protocol";
-import * as vscode from "vscode";
+import { Channel, Client } from '@replit/crosis';
+import { api } from '@replit/protocol';
+import * as vscode from 'vscode';
 
 function uriToApiPath(uri: vscode.Uri): string {
   // strip out leading slash, we can also add a dot before the slash
-  return "." + uri.path;
+  return `.${uri.path}`;
 }
 
 function apiToVscodeFileType(type: api.File.Type): vscode.FileType {
@@ -18,23 +18,37 @@ function apiToVscodeFileType(type: api.File.Type): vscode.FileType {
 
 export class FS implements vscode.FileSystemProvider {
   private filesChanPromise: Promise<Channel>;
+
   private emitter: vscode.EventEmitter<vscode.FileChangeEvent[]>;
 
   onDidChangeFile: vscode.Event<vscode.FileChangeEvent[]>;
 
   constructor(client: Client<vscode.ExtensionContext>) {
     let resolveFilesChan: (filesChan: Channel) => void;
-    this.filesChanPromise = new Promise((r) => (resolveFilesChan = r));
+    let reject: (e: vscode.FileSystemError) => void;
+    this.filesChanPromise = new Promise((res, rej) => {
+      resolveFilesChan = res;
+      reject = rej;
+    });
     // TODO gcsfiles
-    client.openChannel({ service: "files" }, ({ channel }) => {
-      if (!channel) {
+    client.openChannel({ service: 'files' }, (result) => {
+      if (result.error) {
+        reject(vscode.FileSystemError.Unavailable());
+
         return;
       }
 
-      resolveFilesChan(channel);
+      resolveFilesChan(result.channel);
 
-      return () => {
-        this.filesChanPromise = new Promise((r) => (resolveFilesChan = r));
+      return ({ willReconnect }) => {
+        if (!willReconnect) {
+          reject(vscode.FileSystemError.Unavailable());
+        }
+
+        this.filesChanPromise = new Promise((res, rej) => {
+          resolveFilesChan = res;
+          reject = rej;
+        });
       };
     });
 
@@ -47,18 +61,20 @@ export class FS implements vscode.FileSystemProvider {
   // What is this for?
   // async copy() {}
 
+  // eslint-disable-next-line class-methods-use-this
   watch(uri: vscode.Uri): vscode.Disposable {
-    console.log("watch", uri.path);
+    console.log('watch', uri.path);
     // What is this for?
     return new vscode.Disposable(() => {});
   }
 
+  // eslint-disable-next-line class-methods-use-this
   async createDirectory(uri: vscode.Uri): Promise<void> {
-    console.log("createDirectory", uri.path);
+    console.log('createDirectory', uri.path);
   }
 
   async readDirectory(uri: vscode.Uri): Promise<[string, vscode.FileType][]> {
-    console.log("readDirectory", uri.path);
+    console.log('readDirectory', uri.path);
     const filesChannel = await this.filesChanPromise;
     const res = await filesChannel.request({
       readdir: { path: uriToApiPath(uri) },
@@ -75,15 +91,12 @@ export class FS implements vscode.FileSystemProvider {
     }
 
     if (!res.files?.files) {
-      throw new Error("expected files.files");
+      throw new Error('expected files.files');
     }
 
     // TODO do we subscribeFile here?
 
-    return res.files.files.map(({ path, type }) => [
-      path,
-      apiToVscodeFileType(type),
-    ]);
+    return res.files.files.map(({ path, type }) => [path, apiToVscodeFileType(type)]);
   }
 
   async readFile(uri: vscode.Uri): Promise<Uint8Array> {
@@ -103,30 +116,32 @@ export class FS implements vscode.FileSystemProvider {
     }
 
     if (!res.file || !res.file.path || !res.file.content) {
-      throw new Error("Expected file");
+      throw new Error('Expected file');
     }
 
     return res.file.content;
   }
 
+  // eslint-disable-next-line class-methods-use-this
   async delete(uri: vscode.Uri): Promise<void> {
-    console.log("delete", uri.path);
+    console.log('delete', uri.path);
 
     throw vscode.FileSystemError.FileNotFound();
   }
 
+  // eslint-disable-next-line class-methods-use-this
   async rename(
     oldUri: vscode.Uri,
     newUri: vscode.Uri,
-    options: { overwrite: boolean }
+    options: { overwrite: boolean },
   ): Promise<void> {
-    console.log("rename", oldUri.path, newUri.path, options);
+    console.log('rename', oldUri.path, newUri.path, options);
 
     throw vscode.FileSystemError.FileNotFound();
   }
 
   async stat(uri: vscode.Uri): Promise<vscode.FileStat> {
-    console.log("stat", uri.path);
+    console.log('stat', uri.path);
     const filesChannel = await this.filesChanPromise;
     const res = await filesChannel.request({
       stat: { path: uriToApiPath(uri) },
@@ -142,7 +157,7 @@ export class FS implements vscode.FileSystemProvider {
     }
 
     if (!res.statRes) {
-      throw new Error("expected stat result");
+      throw new Error('expected stat result');
     }
 
     if (!res.statRes.exists) {
@@ -161,21 +176,16 @@ export class FS implements vscode.FileSystemProvider {
   async writeFile(
     uri: vscode.Uri,
     content: Uint8Array,
-    options: { create: boolean; overwrite: boolean }
+    options: { create: boolean; overwrite: boolean },
   ): Promise<void> {
-    console.log(
-      "writeFile",
-      uri.path,
-      Buffer.from(content).toString("utf8"),
-      options
-    );
+    console.log('writeFile', uri.path, Buffer.from(content).toString('utf8'), options);
     const filesChannel = await this.filesChanPromise;
     const { statRes } = await filesChannel.request({
       stat: { path: uriToApiPath(uri) },
     });
 
     if (!statRes) {
-      throw new Error("expected stat result");
+      throw new Error('expected stat result');
     }
 
     if (statRes.exists && statRes.type === api.File.Type.DIRECTORY) {
@@ -192,7 +202,7 @@ export class FS implements vscode.FileSystemProvider {
     }
 
     const res = await filesChannel.request({
-      write: { path: uriToApiPath(uri), content: content },
+      write: { path: uriToApiPath(uri), content },
     });
 
     if (res.channelClosed) {

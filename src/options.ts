@@ -1,13 +1,13 @@
-import * as fs from "fs";
-import * as os from "os";
-import * as path from "path";
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
 
-async function tryStat(path: string): Promise<fs.Stats | null> {
+async function tryStat(p: string): Promise<fs.Stats | null> {
   try {
-    let result = await fs.promises.stat(path);
+    const result = await fs.promises.stat(p);
     return result;
   } catch (e) {
-    if (e && e.code === "ENOENT") return null; // not found
+    if (e && e.code === 'ENOENT') return null; // not found
     throw e;
   }
 }
@@ -18,8 +18,8 @@ async function tryStat(path: string): Promise<fs.Stats | null> {
 export class Options {
   configFile: string;
 
-  static isWindows() {
-    return os.platform() === "win32";
+  static isWindows(): boolean {
+    return os.platform() === 'win32';
   }
 
   static async getConfigDir(): Promise<string> {
@@ -31,7 +31,7 @@ export class Options {
       process.env.REPLIT_CONFIG_DIR,
       process.env.VSCODE_PORTABLE,
       process.env.XDG_CONFIG_HOME,
-      path.join(HOME, ".config"),
+      path.join(HOME, '.config'),
       HOME,
     ];
 
@@ -41,11 +41,12 @@ export class Options {
         return dir;
       }
     }
+
     return HOME;
   }
 
   static async getConfigFile(): Promise<string> {
-    return path.join(await Options.getConfigDir(), ".replitcli.json");
+    return path.join(await Options.getConfigDir(), '.replitcli.json');
   }
 
   static async create(): Promise<Options> {
@@ -56,10 +57,11 @@ export class Options {
     this.configFile = configFile;
   }
 
-  async read(): Promise<Record<string, any>> {
+  async read(): Promise<Record<string, unknown>> {
     console.log(`Reading ${this.configFile}`);
     try {
-      const data = (await fs.promises.readFile(this.configFile)).toString();
+      const data = await fs.promises.readFile(this.configFile, 'utf8');
+
       return JSON.parse(data);
     } catch (e) {
       console.error(e);
@@ -68,19 +70,21 @@ export class Options {
     }
   }
 
-  async write(data: any): Promise<void> {
+  async write(data: unknown): Promise<void> {
     console.log(`Writing ${this.configFile}`);
     await fs.promises.writeFile(this.configFile, JSON.stringify(data, null, 2));
   }
 
-  async get(key: string): Promise<any> {
+  async get(key: string): Promise<unknown> {
     const data = await this.read();
-    if (data && data.hasOwnProperty(key)) {
+    if (data && key in data) {
       return data[key];
     }
+
+    return null;
   }
 
-  async set(newData: Record<string, any>): Promise<void> {
+  async set(newData: Record<string, unknown>): Promise<void> {
     const data = await this.read();
     await this.write({ ...data, ...newData });
   }
