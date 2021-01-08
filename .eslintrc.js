@@ -25,7 +25,7 @@ module.exports = {
     'implicit-arrow-linebreak': 'off', // conflicts with prettier
     'no-unused-expressions': 'off', // breaks optional chaining
     '@typescript-eslint/no-unused-expressions': 'error',
-    'max-len': ['error', { code: 120 }],
+    'max-len': ['error', { code: 120, ignoreComments: true }],
     '@typescript-eslint/no-empty-function': 'off',
     'no-shadow': 'off',
     '@typescript-eslint/no-shadow': 'error',
