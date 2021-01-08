@@ -16,6 +16,27 @@ function apiToVscodeFileType(type: api.File.Type): vscode.FileType {
   return vscode.FileType.File;
 }
 
+function parseError(errStr: string, uri: vscode.Uri): vscode.FileSystemError | null {
+  if (errStr.includes('no such file or directory')) {
+    return vscode.FileSystemError.FileNotFound(uri);
+  }
+
+  if (errStr.includes('not a directory')) {
+    return vscode.FileSystemError.FileNotADirectory(uri);
+  }
+
+  if (errStr.includes('is a directory')) {
+    return vscode.FileSystemError.FileIsADirectory(uri);
+  }
+
+  if (errStr.includes('file exist')) {
+    return vscode.FileSystemError.FileExists(uri);
+  }
+
+  // Unknown error
+  return null;
+}
+
 export class FS implements vscode.FileSystemProvider {
   private filesChanPromise: Promise<Channel>;
 
@@ -61,14 +82,12 @@ export class FS implements vscode.FileSystemProvider {
   // What is this for?
   // async copy() {}
 
-  // eslint-disable-next-line class-methods-use-this
   watch(uri: vscode.Uri): vscode.Disposable {
     console.log('watch', uri.path);
     // What is this for?
     return new vscode.Disposable(() => {});
   }
 
-  // eslint-disable-next-line class-methods-use-this
   async createDirectory(uri: vscode.Uri): Promise<void> {
     console.log('createDirectory', uri.path);
   }
@@ -86,8 +105,13 @@ export class FS implements vscode.FileSystemProvider {
     }
 
     if (res.error) {
-      // TODO parse res.error
-      throw vscode.FileSystemError.FileNotFound(uri);
+      const fsError = parseError(res.error, uri);
+
+      if (fsError) {
+        throw fsError;
+      } else {
+        throw new Error(res.error);
+      }
     }
 
     if (!res.files?.files) {
@@ -111,8 +135,13 @@ export class FS implements vscode.FileSystemProvider {
     }
 
     if (res.error) {
-      // TODO parse res.error
-      throw vscode.FileSystemError.FileNotFound(uri);
+      const fsError = parseError(res.error, uri);
+
+      if (fsError) {
+        throw fsError;
+      } else {
+        throw new Error(res.error);
+      }
     }
 
     if (!res.file || !res.file.path || !res.file.content) {
@@ -122,14 +151,12 @@ export class FS implements vscode.FileSystemProvider {
     return res.file.content;
   }
 
-  // eslint-disable-next-line class-methods-use-this
   async delete(uri: vscode.Uri): Promise<void> {
     console.log('delete', uri.path);
 
     throw vscode.FileSystemError.FileNotFound();
   }
 
-  // eslint-disable-next-line class-methods-use-this
   async rename(
     oldUri: vscode.Uri,
     newUri: vscode.Uri,
@@ -153,7 +180,13 @@ export class FS implements vscode.FileSystemProvider {
     }
 
     if (res.error) {
-      throw new Error(res.error);
+      const fsError = parseError(res.error, uri);
+
+      if (fsError) {
+        throw fsError;
+      } else {
+        throw new Error(res.error);
+      }
     }
 
     if (!res.statRes) {
@@ -211,8 +244,13 @@ export class FS implements vscode.FileSystemProvider {
     }
 
     if (res.error) {
-      // TODO parse res.error
-      throw vscode.FileSystemError.FileNotFound(uri);
+      const fsError = parseError(res.error, uri);
+
+      if (fsError) {
+        throw fsError;
+      } else {
+        throw new Error(res.error);
+      }
     }
 
     // TODO emit vscode.FileChangeType.Created and vscode.FileChangeType.Changed
