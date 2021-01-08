@@ -1,10 +1,19 @@
 "use strict";
 
-import { EZCrosis } from "ezcrosis";
+import { EZCrosis, parseRepl, ReplNotFoundError } from "ezcrosis";
 import * as vscode from "vscode";
+import { FS } from "./fs";
 import { Options } from "./options";
 
 const BAD_KEY_MSG = "Please enter a valid crosis key";
+const REPL_NOT_FOUND_MSG = (err: ReplNotFoundError) =>
+  "Repl not found, did you make a typo? " +
+  "If this is a private repl, go to " +
+  `https://repl.it/data/repls/@${err.user}/${err.repl} ` +
+  `and find the part that looks like {"id": "COPY THIS"} and paste just the ID ` +
+  `back in the repl prompt.`;
+
+const eToString = (e: any) => (e && e.stack ? e.stack : e);
 
 // Simple key regex. No need to be strict here.
 const validKey = (key: string): boolean =>
@@ -63,30 +72,57 @@ const ensureKey = async (store: Options): Promise<string | null> => {
  * Called when the user invokes Replit: init from the command palette.
  */
 const initialize = async (store: Options, ctx: vscode.ExtensionContext) => {
-  const key = await ensureKey(store);
-  if (!key) return;
+  const apiKey = await ensureKey(store);
+  if (!apiKey) return;
 
-  const repl = ctx.workspaceState.get("replId");
-  if (!repl) {
+  let replId: string;
+  let storedId = ctx.workspaceState.get("replId");
+
+  if (typeof storedId === "string") {
+    replId = storedId;
+  } else {
     const newRepl = await vscode.window.showInputBox({
       prompt: "Repl Name",
-      placeHolder: "@user/repl or repl id",
+      placeHolder: "Repl link, @user/repl string, or repl id",
       ignoreFocusOut: true,
     });
 
-    if (newRepl) {
-      console.log(newRepl);
+    if (!newRepl) return;
+
+    let newReplId;
+    try {
+      newReplId = await parseRepl(newRepl);
+    } catch (e) {
+      const msg =
+        e instanceof ReplNotFoundError ? REPL_NOT_FOUND_MSG : eToString(e);
+      vscode.window.showErrorMessage(msg);
+      return;
     }
+
+    if (!newReplId) {
+      vscode.window.showErrorMessage("Invalid repl");
+      return;
+    }
+
+    await ctx.workspaceState.update("replId", newReplId);
+    replId = newReplId;
   }
 
-  /*vscode.workspace.registerFileSystemProvider("replit", fs, {
+  console.log(`Connecting to repl ID ${JSON.stringify(replId)}...`);
+  const client = new EZCrosis();
+  client.connect(replId, apiKey);
+
+  console.log("Creating FS...");
+  const fs = await FS.create(client);
+
+  vscode.workspace.registerFileSystemProvider("replit", fs, {
     isCaseSensitive: true,
   });
 
   vscode.workspace.updateWorkspaceFolders(0, 0, {
     uri: vscode.Uri.parse("replit:/"),
-    name: "random testing repl",
-  });*/
+    name: `Repl.it ${replId}`,
+  });
 };
 
 export async function activate(context: vscode.ExtensionContext) {
