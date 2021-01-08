@@ -270,11 +270,6 @@ const initialize = async (store: Options, ctx: vscode.ExtensionContext) => {
             isCaseSensitive: true,
           })
         );
-
-        vscode.workspace.updateWorkspaceFolders(0, 0, {
-          uri: vscode.Uri.parse("replit:/"),
-          name: `Repl.it ${replId}`,
-        });
       })();
     }
   );
@@ -283,10 +278,15 @@ const initialize = async (store: Options, ctx: vscode.ExtensionContext) => {
 export async function activate(context: vscode.ExtensionContext) {
   console.log("Extension activating...");
   const store = await Options.create();
+  console.log("Initializing...");
+  await initialize(store, context);
 
   context.subscriptions.push(
     vscode.commands.registerCommand("replit.init", () =>
-      initialize(store, context)
+      vscode.workspace.updateWorkspaceFolders(0, 0, {
+        uri: vscode.Uri.parse("replit:/"),
+        name: `Repl.it`,
+      })
     )
   );
 }
