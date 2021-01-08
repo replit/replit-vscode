@@ -1,6 +1,8 @@
 "use strict";
 
 import { Client } from "@replit/crosis";
+import fetch, { Response } from "node-fetch";
+import { AbortSignal } from "node-fetch/externals";
 import * as vscode from "vscode";
 import ws from "ws";
 import { FS } from "./fs";
@@ -37,7 +39,7 @@ export const performDataRequest = async (
         "x-requested-with": "ezcrosis",
       },
     });
-    if (r.status !== 200) {
+    if (r && r.status !== 200) {
       let text;
       try {
         text = await r.text();
@@ -242,7 +244,7 @@ const initialize = async (store: Options, ctx: vscode.ExtensionContext) => {
   client.open(
     {
       context: ctx,
-      fetchToken: async (abortSignal: AbortSignal) => {
+      fetchToken: async (abortSignal: any) => {
         let token;
         try {
           token = await fetchToken(abortSignal, apiKey, replId);
