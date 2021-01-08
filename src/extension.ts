@@ -94,7 +94,7 @@ export async function parseRepl(
   // user might include the full repl URL with #filename, strip that out
   slug = slug.split("#")[0];
 
-  return await replIdGetter(user, slug);
+  return replIdGetter(user, slug);
 }
 
 // Simple key regex. No need to be strict here.
