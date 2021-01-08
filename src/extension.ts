@@ -247,7 +247,7 @@ const initialize = async (store: Options, ctx: vscode.ExtensionContext) => {
       fetchToken: async (abortSignal: any) => {
         let token;
         try {
-          token = await fetchToken(abortSignal, apiKey, replId);
+          token = await fetchToken(abortSignal, replId, apiKey);
         } catch (e) {
           if (e.name === "AbortError") {
             return { aborted: true, token: null };
