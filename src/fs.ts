@@ -154,10 +154,25 @@ export class FS implements vscode.FileSystemProvider {
     return res.file.content;
   }
 
-  async delete(uri: vscode.Uri): Promise<void> {
-    console.log('delete', uri.path);
+  async delete(uri: vscode.Uri, _options: { recursive: boolean }): Promise<void> {
+    // Ignoring recursive option for now. I'm not sure when vscode would
+    // ask us to delete a directory non-recursively, and what is the correct
+    // behavior if the directory has contents and we don't have a recursive option
+    const filesChannel = await this.filesChanPromise;
+    const res = await filesChannel.request({
+      remove: { path: uriToApiPath(uri) },
+    });
 
-    throw vscode.FileSystemError.FileNotFound();
+    if (res.channelClosed) {
+      // TODO handle properly
+      throw vscode.FileSystemError.Unavailable(uri);
+    }
+
+    handleError(res.error, uri);
+
+    // TODO
+    // emit vscode.FileChangeType.Changed for parent directory
+    // emit vscode.FileChangeType.Deleted
   }
 
   async rename(
