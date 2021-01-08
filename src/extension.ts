@@ -58,7 +58,7 @@ export async function parseRepl(repl: string): Promise<string | null> {
   if (isReplId(repl)) return repl;
 
   // Check if user included full URL using a simple regex
-  const urlRegex = /http(?:s?):\/\/repl\.it\/@(.+)\/([^?\s#]+)/g;
+  const urlRegex = /(?:http(?:s?):\/\/repl\.it\/)?@(.+)\/([^?\s#]+)/g;
   const match = urlRegex.exec(repl);
   if (!match) {
     return null;
