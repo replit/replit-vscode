@@ -13,7 +13,7 @@
     "onFileSystem:replit",
     "onCommand:replit.init"
   ],
-  "main": "./out/extension.js",
+  "main": "./dist/extension.js",
   "contributes": {
     "commands": [
       {
@@ -35,7 +35,7 @@
     "vscode:prepublish": "npm run compile",
     "build": "tsc -p ./",
     "watch": "tsc -watch -p ./",
-    "lint": "eslint src --ext ts",
+    "lint": "eslint ./src --quiet",
     "test": "echo \"no teste :(\""
   },
   "prettier": {
@@ -58,7 +58,7 @@
     "@typescript-eslint/eslint-plugin": "^4.12.0",
     "@typescript-eslint/parser": "^4.12.0",
     "eslint": "^7.15.0",
-    "eslint-config-airbnb": "^18.2.1",
+    "eslint-config-airbnb": "^18.0.1",
     "eslint-config-prettier": "^7.1.0",
     "eslint-import-resolver-typescript": "^2.3.0",
     "eslint-plugin-import": "^2.22.1",

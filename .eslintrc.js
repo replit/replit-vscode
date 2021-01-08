@@ -16,7 +16,12 @@ module.exports = {
   },
   rules: {
     'import/prefer-default-export': 'off',
+    'import/extensions': 'off',
+    'import/no-unresolved': 'off',
     indent: 'off',
+    'function-paren-newline': 'off',
+    'no-restricted-syntax': ['error', 'LabeledStatement', 'WithStatement'],
+    'no-await-in-loop': 'off',
     'implicit-arrow-linebreak': 'off', // conflicts with prettier
     'no-unused-expressions': 'off', // breaks optional chaining
     '@typescript-eslint/no-unused-expressions': 'error',
@@ -29,5 +34,6 @@ module.exports = {
     'operator-linebreak': 'off',
     'no-param-reassign': ['error', { props: false }],
     'object-curly-newline': 'off',
+    'consistent-return': 'off',
   },
 };
