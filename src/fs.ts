@@ -193,6 +193,10 @@ export class FS implements vscode.FileSystemProvider {
   ): Promise<void> {
     console.log('writeFile', uri.path, Buffer.from(content).toString('utf8'), options);
     const filesChannel = await this.filesChanPromise;
+
+    // Replit's api for `write` always creates and overwrites, where as vscode expects us
+    // to validate the existence of the file based on these options.
+    // Based off https://github.com/microsoft/vscode/blob/f4ab083c28ef1943c6636b8268e698bfc8614ee8/src/vs/platform/files/node/diskFileSystemProvider.ts#L176-L189
     const { statRes } = await filesChannel.request({
       stat: { path: uriToApiPath(uri) },
     });
@@ -211,6 +215,7 @@ export class FS implements vscode.FileSystemProvider {
     }
 
     if (statRes.exists && !options.overwrite) {
+      // No overwrite option, but the file exists
       throw vscode.FileSystemError.FileExists(uri);
     }
 
