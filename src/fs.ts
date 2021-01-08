@@ -83,6 +83,30 @@ export class FS implements vscode.FileSystemProvider {
     // TODO open fsevents and snapshots
   }
 
+  // This is called when we want to retry after we get channelClosed
+  // eslint-disable-next-line class-methods-use-this
+  private async callSoon<Fn extends (...args: never[]) => Promise<any>>(
+    fn: Fn,
+    ...params: Parameters<Fn>
+  ): Promise<ReturnType<Fn>> {
+    // We will re-call the function when the channel opens
+    // we add a timeout to allow for the filesChanPromise to be regenerated
+    // in the clean up callback as the cleanup callback is called after the
+    // request is resolved with `channelClosed`.
+    // i.e.
+    // 1. https://github.com/replit/crosis/blob/763a1ec/src/client.ts#L1213-L1216
+    // 2. https://github.com/replit/crosis/blob/763a1ec/src/channel.ts#L169-L170 (we got res.channelClosed here)
+    // 3. https://github.com/replit/crosis/blob/763a1ec/src/client.ts#L1247-L1250 (filesChanPromise is reset here)
+    // 4. Our timeout
+    return new Promise((resolve, reject) => {
+      setTimeout(() => {
+        fn(...params)
+          .then(resolve)
+          .catch(reject);
+      }, 0);
+    });
+  }
+
   // What is this for?
   // async copy() {}
 
@@ -101,8 +125,7 @@ export class FS implements vscode.FileSystemProvider {
     });
 
     if (res.channelClosed) {
-      // TODO handle properly
-      throw vscode.FileSystemError.Unavailable(uri);
+      return this.callSoon(this.createDirectory, uri);
     }
 
     handleError(res.error, uri);
@@ -119,8 +142,7 @@ export class FS implements vscode.FileSystemProvider {
     });
 
     if (res.channelClosed) {
-      // TODO handle properly
-      throw vscode.FileSystemError.Unavailable(uri);
+      return this.callSoon(this.readDirectory, uri);
     }
 
     handleError(res.error, uri);
@@ -141,8 +163,7 @@ export class FS implements vscode.FileSystemProvider {
     });
 
     if (res.channelClosed) {
-      // TODO handle properly
-      throw vscode.FileSystemError.Unavailable(uri);
+      return this.callSoon(this.readFile, uri);
     }
 
     handleError(res.error, uri);
@@ -164,8 +185,7 @@ export class FS implements vscode.FileSystemProvider {
     });
 
     if (res.channelClosed) {
-      // TODO handle properly
-      throw vscode.FileSystemError.Unavailable(uri);
+      return this.callSoon(this.delete, uri, _options);
     }
 
     handleError(res.error, uri);
@@ -192,15 +212,21 @@ export class FS implements vscode.FileSystemProvider {
     // if the file exists:
     // - overwrite is false, we throw an exists error
     // - overwrite: is true, delete the file before moving
-    const { statRes } = await filesChannel.request({
+    const statResponse = await filesChannel.request({
       stat: { path: uriToApiPath(newUri) },
     });
 
-    if (!statRes) {
+    if (statResponse.channelClosed) {
+      return this.callSoon(this.rename, oldUri, newUri, options);
+    }
+
+    const { statRes: statResult } = statResponse;
+
+    if (!statResult) {
       throw new Error('expected stat result');
     }
 
-    if (statRes.exists) {
+    if (statResult.exists) {
       if (!options.overwrite) {
         throw vscode.FileSystemError.FileExists(newUri);
       }
@@ -212,9 +238,8 @@ export class FS implements vscode.FileSystemProvider {
       move: { oldPath: uriToApiPath(oldUri), newPath: uriToApiPath(newUri) },
     });
 
-    if (res.channelClosed) {
-      // TODO handle properly
-      throw vscode.FileSystemError.Unavailable(oldUri);
+    if (statResponse.channelClosed) {
+      return this.callSoon(this.rename, oldUri, newUri, options);
     }
 
     handleError(res.error, oldUri);
@@ -233,8 +258,7 @@ export class FS implements vscode.FileSystemProvider {
     });
 
     if (res.channelClosed) {
-      // TODO handle properly
-      throw vscode.FileSystemError.Unavailable(uri);
+      return this.callSoon(this.stat, uri);
     }
 
     handleError(res.error, uri);
@@ -267,24 +291,30 @@ export class FS implements vscode.FileSystemProvider {
     // Replit's api for `write` always creates and overwrites, where as vscode expects us
     // to validate the existence of the file based on these options.
     // Based off https://github.com/microsoft/vscode/blob/f4ab083c28ef1943c6636b8268e698bfc8614ee8/src/vs/platform/files/node/diskFileSystemProvider.ts#L176-L189
-    const { statRes } = await filesChannel.request({
+    const statResponse = await filesChannel.request({
       stat: { path: uriToApiPath(uri) },
     });
 
-    if (!statRes) {
+    if (statResponse.channelClosed) {
+      return this.callSoon(this.writeFile, uri, content, options);
+    }
+
+    const { statRes: statResult } = statResponse;
+
+    if (!statResult) {
       throw new Error('expected stat result');
     }
 
-    if (statRes.exists && statRes.type === api.File.Type.DIRECTORY) {
+    if (statResult.exists && statResult.type === api.File.Type.DIRECTORY) {
       throw vscode.FileSystemError.FileIsADirectory(uri);
     }
 
-    if (!statRes.exists && !options.create) {
+    if (!statResult.exists && !options.create) {
       // Doesn't have create option but file is not found
       throw vscode.FileSystemError.FileNotFound(uri);
     }
 
-    if (statRes.exists && !options.overwrite) {
+    if (statResult.exists && !options.overwrite) {
       // No overwrite option, but the file exists
       throw vscode.FileSystemError.FileExists(uri);
     }
@@ -294,8 +324,7 @@ export class FS implements vscode.FileSystemProvider {
     });
 
     if (res.channelClosed) {
-      // TODO handle properly
-      throw vscode.FileSystemError.Unavailable(uri);
+      return this.callSoon(this.writeFile, uri, content, options);
     }
 
     handleError(res.error, uri);
