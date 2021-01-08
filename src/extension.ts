@@ -1,106 +1,101 @@
 "use strict";
 
-import { Client } from "@replit/crosis";
-import * as crypto from "crypto";
+import { EZCrosis } from "ezcrosis";
 import * as vscode from "vscode";
-import { w3cwebsocket } from "websocket";
-import { FS } from "./fs";
+import { Options } from "./options";
 
-function genConnectionMetadata() {
-  const { TOKEN_SECRET } = process.env;
+const BAD_KEY_MSG = "Please enter a valid crosis key";
 
-  if (!TOKEN_SECRET) {
-    throw new Error("TOKEN_SECRET env var not found");
-  }
+// Simple key regex. No need to be strict here.
+const validKey = (key: string): boolean =>
+  !!key && /[a-zA-Z0-9\/=]+:[a-zA-Z0-9\/=]+/.test(key);
 
-  const opts = {
-    id: `vscode-ext-wip-${Math.random().toString(36).split(".")[1]}`,
-    mem: 1024 * 1024 * 512,
-    thread: 0.5,
-    share: 0.5,
-    net: true,
-    attach: true,
-    bucket: "test-replit-repls",
-    ephemeral: true,
-    nostore: true,
-    language: "bash",
-    owner: true,
-    path: Math.random().toString(36).split(".")[1],
-    disk: 1024 * 1024 * 1024,
-    bearerName: "vscoderepltwip",
-    bearerId: 2,
-    presenced: true,
-    user: "vscoderepltwip",
-    pullFiles: true,
-    polygott: false,
-    format: "pbuf",
-  };
-  const encodedOpts = Buffer.from(
-    JSON.stringify({
-      created: Date.now(),
-      salt: Math.random().toString(36).split(".")[1],
-      ...opts,
-    })
-  ).toString("base64");
+const makeClient = (): EZCrosis => {
+  const crosis = new EZCrosis();
 
-  const hmac = crypto.createHmac("sha256", TOKEN_SECRET);
-  hmac.update(encodedOpts);
-  const msgMac = hmac.digest("base64");
-
-  const token = Buffer.from(`${encodedOpts}:${msgMac}`);
-
-  return {
-    token: token.toString("base64"),
-    gurl: "ws://eval.repl.it",
-    conmanURL: "http://eval.repl.it",
-  };
-}
-
-export function activate(context: vscode.ExtensionContext) {
-  const client = new Client<vscode.ExtensionContext>();
-
-  client.setUnrecoverableErrorHandler((e) => {
+  crosis.client.setUnrecoverableErrorHandler((e: Error) => {
     console.error(e);
     vscode.window.showErrorMessage(e.message);
   });
 
-  client.open(
-    {
-      fetchConnectionMetadata: async () => {
-        // TODO actually get connection metadata through API
-        return {
-          ...genConnectionMetadata(),
-          error: null,
-        };
-      },
-      // @ts-ignore we don't use addEventListener removeEventListener and dispatchEvent :)
-      // eslint-disable-next-line
-      WebSocketClass: w3cwebsocket as WebSocket,
-      context,
-    },
-    ({ channel }) => {
-      if (channel) {
-        console.log("connected");
-      } else {
-        console.log("error while opening");
-      }
+  return crosis;
+};
+
+/*
+vscode.workspace.updateWorkspaceFolders(0, 0, {
+    uri: vscode.Uri.parse("replit:/"),
+    name: "random testing repl",
+  });*/
+
+const ensureKey = async (store: Options): Promise<string | null> => {
+  let nullableStoredKey: string | null;
+  try {
+    nullableStoredKey = await store.get("key");
+  } catch (e) {
+    console.error(e);
+    nullableStoredKey = null;
+  }
+  // Ensure that the key is a string and not just arbitrary JSON
+  const storedKey: string =
+    typeof nullableStoredKey === "string" ? nullableStoredKey || "" : "";
+
+  if (storedKey && validKey(storedKey)) {
+    return storedKey;
+  } else {
+    const newKey = await vscode.window.showInputBox({
+      prompt: "Crosis API Key",
+      placeHolder: "Enter your api key from https://devs.turbio.repl.co",
+      value: storedKey || "",
+      ignoreFocusOut: true,
+      validateInput: (val) => (validKey(val) ? "" : BAD_KEY_MSG),
+    });
+
+    if (newKey && validKey(newKey)) {
+      await store.set({ key: newKey });
+      return newKey;
     }
-  );
 
-  const fs = new FS(client);
-  context.subscriptions.push(
-    vscode.workspace.registerFileSystemProvider("replit", fs, {
-      isCaseSensitive: true,
-    })
-  );
+    return null;
+  }
+};
+
+/**
+ * Called when the user invokes Replit: init from the command palette.
+ */
+const initialize = async (store: Options, ctx: vscode.ExtensionContext) => {
+  const key = await ensureKey(store);
+  if (!key) return;
+
+  const repl = ctx.workspaceState.get("replId");
+  if (!repl) {
+    const newRepl = await vscode.window.showInputBox({
+      prompt: "Repl Name",
+      placeHolder: "@user/repl or repl id",
+      ignoreFocusOut: true,
+    });
+
+    if (newRepl) {
+      console.log(newRepl);
+    }
+  }
+
+  /*vscode.workspace.registerFileSystemProvider("replit", fs, {
+    isCaseSensitive: true,
+  });
+
+  vscode.workspace.updateWorkspaceFolders(0, 0, {
+    uri: vscode.Uri.parse("replit:/"),
+    name: "random testing repl",
+  });*/
+};
+
+export async function activate(context: vscode.ExtensionContext) {
+  console.log("Creating options...");
+  const store = await Options.create();
 
   context.subscriptions.push(
-    vscode.commands.registerCommand("replit.init", async () => {
-      // TOOD this should accept a repl and then connect
-      vscode.workspace.updateWorkspaceFolders(0, 0, {
-        uri: vscode.Uri.parse("replit:/"),
-        name: "random testing repl",
-      });
-    })
+    vscode.commands.registerCommand("replit.init", () =>
+      initialize(store, context)
+    )
   );
 }

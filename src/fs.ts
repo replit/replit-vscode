@@ -1,5 +1,6 @@
-import { Channel, Client } from "@replit/crosis";
+import { Channel } from "@replit/crosis";
 import { api } from "@replit/protocol";
+import { EZCrosis } from "ezcrosis";
 import * as vscode from "vscode";
 
 function uriToApiPath(uri: vscode.Uri): string {
@@ -17,29 +18,36 @@ function apiToVscodeFileType(type: api.File.Type): vscode.FileType {
 }
 
 export class FS implements vscode.FileSystemProvider {
-  private filesChanPromise: Promise<Channel>;
+  private client: EZCrosis;
+  private filesChan: Channel;
+  private fsEventsChan: Channel;
+  private snapshotsChan: Channel;
   private emitter: vscode.EventEmitter<vscode.FileChangeEvent[]>;
 
   onDidChangeFile: vscode.Event<vscode.FileChangeEvent[]>;
 
-  constructor(client: Client<vscode.ExtensionContext>) {
-    let resolveFilesChan: (filesChan: Channel) => void;
-    this.filesChanPromise = new Promise((r) => (resolveFilesChan = r));
-    // TODO gcsfiles
-    client.openChannel({ service: "files" }, ({ channel }) => {
-      if (!channel) {
-        return;
-      }
+  static async create(client: EZCrosis): Promise<FS> {
+    return new FS(
+      client,
+      await client.channel("files"),
+      await client.channel("fsevents"),
+      await client.channel("snapshots")
+    );
+  }
 
-      resolveFilesChan(channel);
-
-      return () => {
-        this.filesChanPromise = new Promise((r) => (resolveFilesChan = r));
-      };
-    });
-
+  constructor(
+    client: EZCrosis,
+    filesChan: Channel,
+    fsEventsChan: Channel,
+    snapshotsChan: Channel
+  ) {
     this.emitter = new vscode.EventEmitter<vscode.FileChangeEvent[]>();
     this.onDidChangeFile = this.emitter.event;
+
+    this.client = client;
+    this.filesChan = filesChan;
+    this.fsEventsChan = fsEventsChan;
+    this.snapshotsChan = snapshotsChan;
 
     // TODO open fsevents and snapshots
   }
@@ -50,7 +58,15 @@ export class FS implements vscode.FileSystemProvider {
   watch(uri: vscode.Uri): vscode.Disposable {
     console.log("watch", uri.path);
     // What is this for?
-    return new vscode.Disposable(() => {});
+    return new vscode.Disposable(() => {
+      // The following 6 lines are to make typescript shut up
+      if (this.fsEventsChan) {
+        if (this.snapshotsChan) {
+          if (this.client) {
+          }
+        }
+      }
+    });
   }
 
   async createDirectory(uri: vscode.Uri): Promise<void> {
@@ -59,8 +75,7 @@ export class FS implements vscode.FileSystemProvider {
 
   async readDirectory(uri: vscode.Uri): Promise<[string, vscode.FileType][]> {
     console.log("readDirectory", uri.path);
-    const filesChannel = await this.filesChanPromise;
-    const res = await filesChannel.request({
+    const res = await this.filesChan.request({
       readdir: { path: uriToApiPath(uri) },
     });
 
@@ -70,6 +85,7 @@ export class FS implements vscode.FileSystemProvider {
     }
 
     if (res.error) {
+      console.error(res.error);
       // TODO parse res.error
       throw vscode.FileSystemError.FileNotFound(uri);
     }
@@ -87,8 +103,7 @@ export class FS implements vscode.FileSystemProvider {
   }
 
   async readFile(uri: vscode.Uri): Promise<Uint8Array> {
-    const filesChannel = await this.filesChanPromise;
-    const res = await filesChannel.request({
+    const res = await this.filesChan.request({
       read: { path: uriToApiPath(uri) },
     });
 
@@ -127,8 +142,7 @@ export class FS implements vscode.FileSystemProvider {
 
   async stat(uri: vscode.Uri): Promise<vscode.FileStat> {
     console.log("stat", uri.path);
-    const filesChannel = await this.filesChanPromise;
-    const res = await filesChannel.request({
+    const res = await this.filesChan.request({
       stat: { path: uriToApiPath(uri) },
     });
 
@@ -169,8 +183,7 @@ export class FS implements vscode.FileSystemProvider {
       Buffer.from(content).toString("utf8"),
       options
     );
-    const filesChannel = await this.filesChanPromise;
-    const { statRes } = await filesChannel.request({
+    const { statRes } = await this.filesChan.request({
       stat: { path: uriToApiPath(uri) },
     });
 
@@ -191,7 +204,7 @@ export class FS implements vscode.FileSystemProvider {
       throw vscode.FileSystemError.FileExists(uri);
     }
 
-    const res = await filesChannel.request({
+    const res = await this.filesChan.request({
       write: { path: uriToApiPath(uri), content: content },
     });
 
