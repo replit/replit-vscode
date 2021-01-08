@@ -63,7 +63,7 @@ export async function parseRepl(repl: string): Promise<string | null> {
     return null;
   }
 
-  const [_, user, slug] = match;
+  const [, user, slug] = match;
 
   return getReplId(user, slug);
 }
@@ -78,15 +78,18 @@ vscode.workspace.updateWorkspaceFolders(0, 0, {
   }); */
 
 const ensureKey = async (store: Options): Promise<string | null> => {
-  let nullableStoredKey: string | null;
+  let storedKey: string;
   try {
-    nullableStoredKey = await store.get('key');
+    const key = await store.get('key');
+    if (typeof key === 'string') {
+      storedKey = key;
+    } else {
+      storedKey = '';
+    }
   } catch (e) {
     console.error(e);
-    nullableStoredKey = null;
+    storedKey = '';
   }
-  // Ensure that the key is a string and not just arbitrary JSON
-  const storedKey: string = typeof nullableStoredKey === 'string' ? nullableStoredKey || '' : '';
 
   if (storedKey && validKey(storedKey)) {
     return storedKey;
