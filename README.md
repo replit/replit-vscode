@@ -15,7 +15,7 @@ Once you open a repl you can start making changes to the filesystem from the fil
 
 # Filewatching
 
-Currently the extension does not watch the repl's filesystem, so if you, or a multiplayer collaborator, are making changes in the shell or in the repl, you won't see them propagate in VSCode. You can hit the refresh button in the filetree and the workspace should pick up the changes.
+Currently the extension does not watch the repl's filesystem, so if you, or a multiplayer collaborator, are making changes on Repl.it or programatically (via shell or a running program), you won't see them propagate in VSCode in real-time. You can hit the refresh button in the filetree and the workspace should pick up the changes.
 
 # Development
 
