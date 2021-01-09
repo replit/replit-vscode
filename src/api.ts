@@ -1,5 +1,4 @@
 import fetch from 'node-fetch';
-import { AbortSignal } from 'node-fetch/externals';
 import { GraphQLClient, gql } from 'graphql-request';
 import { ReplInfo } from './types';
 
@@ -83,13 +82,8 @@ export async function getReplInfo(input: string): Promise<ReplInfo> {
   return getReplInfoByUrl(`https://repl.it/@${user}/${slug}`);
 }
 
-export async function fetchToken(
-  abortSignal: AbortSignal,
-  replId: string,
-  apiKey: string,
-): Promise<string> {
+export async function fetchToken(replId: string, apiKey: string): Promise<string> {
   const r = await fetch(`https://repl.it/api/v0/repls/${replId}/token`, {
-    signal: abortSignal,
     method: 'POST',
     headers: {
       accept: 'application/json',

@@ -2,7 +2,7 @@
   "name": "replit",
   "displayName": "replit",
   "description": "",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "publisher": "masad-frost",
   "repository": "https://github.com/replit/replit-vscode",
   "engines": {
@@ -48,7 +48,7 @@
     "build": "webpack --mode production",
     "watch": "webpack --mode development --watch",
     "lint": "eslint ./src --quiet",
-    "test-types": "tsc -p ./ --noEmit",
+    "tscc": "tsc -p ./ --noEmit",
     "test": "echo \"no teste :(\""
   },
   "prettier": {

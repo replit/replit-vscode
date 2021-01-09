@@ -8,8 +8,6 @@ import ReplitTerminal from './shell';
 import { CrosisClient, ReplInfo } from './types';
 import { fetchToken, getReplInfo } from './api';
 
-const BAD_KEY_MSG = 'Please enter a valid crosis key';
-
 // Simple key regex. No need to be strict here.
 const validKey = (key: string): boolean => !!key && /[a-zA-Z0-9/=]+:[a-zA-Z0-9/=]+/.test(key);
 
@@ -41,7 +39,7 @@ const ensureKey = async (
     placeHolder: 'Enter your api key from https://devs.turbio.repl.co',
     value: '',
     ignoreFocusOut: true,
-    validateInput: (val) => (validKey(val) ? '' : BAD_KEY_MSG),
+    validateInput: (val) => (validKey(val) ? '' : 'Please enter a valid crosis key'),
   });
 
   if (newKey && validKey(newKey)) {
@@ -82,15 +80,14 @@ function openReplClient(
         extensionContext: context,
         replInfo,
       },
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      fetchToken: async (abortSignal: any) => {
+      fetchToken: async (_abortSignal: any) => {
         if (!apiKey) {
           throw new Error('Repl.it: Failed to open repl, no API key provided');
         }
 
         let token;
         try {
-          token = await fetchToken(abortSignal, replInfo.id, apiKey);
+          token = await fetchToken(replInfo.id, apiKey);
         } catch (e) {
           if (e.name === 'AbortError') {
             return { aborted: true, token: null };
