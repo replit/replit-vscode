@@ -4,9 +4,13 @@ import { api } from '@replit/protocol';
 import { posix as posixPath } from 'path';
 import * as vscode from 'vscode';
 
-function uriToApiPath(uri: vscode.Uri): string {
-  // strip out leading slash, we can also add a dot before the slash
-  return `.${uri.path}`;
+function replIdFromUri({ path }: vscode.Uri): string {
+  return path.split('/')[0];
+}
+
+function uriToApiPath({ path }: vscode.Uri): string {
+  const pathWithoutReplId = path.split('/').slice(1).join('/');
+  return `.${pathWithoutReplId}`;
 }
 
 function apiToVscodeFileType(type: api.File.Type): vscode.FileType {
@@ -48,13 +52,138 @@ function handleError(errStr: string, uri: vscode.Uri): null {
 }
 
 export class FS implements vscode.FileSystemProvider {
+  private emitter: vscode.EventEmitter<vscode.FileChangeEvent[]>;
+
+  onDidChangeFile: vscode.Event<vscode.FileChangeEvent[]>;
+
+  replFsMap: {
+    [replId: string]: ReplFs;
+  };
+
+  constructor() {
+    this.emitter = new vscode.EventEmitter<vscode.FileChangeEvent[]>();
+    this.onDidChangeFile = this.emitter.event;
+    this.replFsMap = {};
+  }
+
+  addRepl(replId: string, client: Client<vscode.ExtensionContext>) {
+    const replFs = new ReplFs(client, this.emitter);
+    this.replFsMap[replId] = replFs;
+  }
+
+  // eslint-disable-next-line class-methods-use-this
+  watch(uri: vscode.Uri): vscode.Disposable {
+    console.log('watch', uri.path);
+    // What is this for?
+    return {
+      dispose: () => {},
+    };
+  }
+
+  async createDirectory(uri: vscode.Uri): Promise<void> {
+    const replId = replIdFromUri(uri);
+
+    const fs = this.replFsMap[replId];
+
+    if (!fs) {
+      throw new Error('Expected fs in replFsMap');
+    }
+
+    return fs.createDirectory(uri);
+  }
+
+  async readDirectory(uri: vscode.Uri): Promise<[string, vscode.FileType][]> {
+    const replId = replIdFromUri(uri);
+
+    const fs = this.replFsMap[replId];
+
+    if (!fs) {
+      throw new Error('Expected fs in replFsMap');
+    }
+
+    return fs.readDirectory(uri);
+  }
+
+  async writeFile(
+    uri: vscode.Uri,
+    content: Uint8Array,
+    options: { create: boolean; overwrite: boolean },
+  ): Promise<void> {
+    const replId = replIdFromUri(uri);
+
+    const fs = this.replFsMap[replId];
+
+    if (!fs) {
+      throw new Error('Expected fs in replFsMap');
+    }
+
+    return fs.writeFile(uri, content, options);
+  }
+
+  async readFile(uri: vscode.Uri): Promise<Uint8Array> {
+    const replId = replIdFromUri(uri);
+
+    const fs = this.replFsMap[replId];
+
+    if (!fs) {
+      throw new Error('Expected fs in replFsMap');
+    }
+
+    return fs.readFile(uri);
+  }
+
+  async delete(uri: vscode.Uri, options: { recursive: boolean }): Promise<void> {
+    const replId = replIdFromUri(uri);
+
+    const fs = this.replFsMap[replId];
+
+    if (!fs) {
+      throw new Error('Expected fs in replFsMap');
+    }
+
+    return fs.delete(uri, options);
+  }
+
+  async rename(
+    oldUri: vscode.Uri,
+    newUri: vscode.Uri,
+    options: { overwrite: boolean },
+  ): Promise<void> {
+    const replId = replIdFromUri(oldUri);
+
+    const fs = this.replFsMap[replId];
+
+    if (!fs) {
+      throw new Error('Expected fs in replFsMap');
+    }
+
+    return fs.rename(oldUri, newUri, options);
+  }
+
+  async stat(uri: vscode.Uri): Promise<vscode.FileStat> {
+    const replId = replIdFromUri(uri);
+
+    const fs = this.replFsMap[replId];
+
+    if (!fs) {
+      throw new Error('Expected fs in replFsMap');
+    }
+
+    return fs.stat(uri);
+  }
+}
+
+class ReplFs implements vscode.FileSystemProvider {
   private filesChanPromise: Promise<Channel>;
 
   private emitter: vscode.EventEmitter<vscode.FileChangeEvent[]>;
 
   onDidChangeFile: vscode.Event<vscode.FileChangeEvent[]>;
 
-  constructor(client: Client<vscode.ExtensionContext>) {
+  constructor(
+    client: Client<vscode.ExtensionContext>,
+    emitter: vscode.EventEmitter<vscode.FileChangeEvent[]>,
+  ) {
     let resolveFilesChan: (filesChan: Channel) => void;
     let reject: (e: vscode.FileSystemError) => void;
     this.filesChanPromise = new Promise((res, rej) => {
@@ -83,7 +212,7 @@ export class FS implements vscode.FileSystemProvider {
       };
     });
 
-    this.emitter = new vscode.EventEmitter<vscode.FileChangeEvent[]>();
+    this.emitter = emitter;
     this.onDidChangeFile = this.emitter.event;
 
     // TODO open fsevents and snapshots
