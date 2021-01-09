@@ -11,14 +11,14 @@
   ],
   "activationEvents": [
     "onFileSystem:replit",
-    "onCommand:replit.init"
+    "onCommand:replit.openrepl"
   ],
   "main": "./dist/extension.js",
   "contributes": {
     "commands": [
       {
-        "command": "replit.init",
-        "title": "init",
+        "command": "replit.openrepl",
+        "title": "Select a repl",
         "category": "Replit"
       },
       {
@@ -29,10 +29,6 @@
     ],
     "menus": {
       "commandPalette": [
-        {
-          "command": "replit.init",
-          "when": "workbenchState != workspace"
-        },
         {
           "command": "replit.shell",
           "when": "workbenchState == workspace"
