@@ -44,7 +44,7 @@
     }
   },
   "scripts": {
-    "vscode:prepublish": "npm run lint && npm run test-types && npm run build",
+    "vscode:prepublish": "npm run lint && npm run tscc && npm run build",
     "build": "webpack --mode production",
     "watch": "webpack --mode development --watch",
     "lint": "eslint ./src --quiet",
