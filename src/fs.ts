@@ -6,11 +6,14 @@ import { posix as posixPath } from 'path';
 import * as vscode from 'vscode';
 
 function replIdFromUri({ path }: vscode.Uri): string {
-  return path.split('/')[0];
+  return path.split('/')[1];
 }
 
 function uriToApiPath({ path }: vscode.Uri): string {
   const pathWithoutReplId = path.split('/').slice(1).join('/');
+
+  console.log(`.${pathWithoutReplId}`);
+
   return `.${pathWithoutReplId}`;
 }
 
@@ -123,8 +126,6 @@ class ReplFs implements vscode.FileSystemProvider {
 
   // eslint-disable-next-line class-methods-use-this
   watch(uri: vscode.Uri): vscode.Disposable {
-    console.log('watch', uri.path);
-    // What is this for?
     return {
       dispose: () => {},
     };
@@ -386,8 +387,6 @@ export class FS implements vscode.FileSystemProvider {
 
   // eslint-disable-next-line class-methods-use-this
   watch(uri: vscode.Uri): vscode.Disposable {
-    console.log('watch', uri.path);
-    // What is this for?
     return {
       dispose: () => {},
     };
@@ -478,6 +477,7 @@ export class FS implements vscode.FileSystemProvider {
     const replId = replIdFromUri(uri);
 
     const fs = this.replFsMap[replId];
+    console.log('stating ', uri.path, replId, !!fs);
 
     if (!fs) {
       throw new Error('Expected fs in replFsMap');
