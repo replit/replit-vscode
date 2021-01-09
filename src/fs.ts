@@ -70,8 +70,8 @@ class ReplFs implements vscode.FileSystemProvider {
       resolveFilesChan = res;
       reject = rej;
     });
-    // TODO gcsfiles
-    client.openChannel({ service: 'files' }, (result) => {
+
+    client.openChannel({ service: 'gcsfiles' }, (result) => {
       if (result.error) {
         reject(vscode.FileSystemError.Unavailable());
 
