@@ -7,7 +7,7 @@ import ws from 'ws';
 import { GraphQLClient, gql } from 'graphql-request';
 import { FS } from './fs';
 import { Options } from './options';
-// import ReplitTerminal from './shell';
+import ReplitTerminal from './shell';
 
 const gqlClient = new GraphQLClient('https://repl.it/graphql/', {});
 gqlClient.setHeaders({
@@ -170,6 +170,16 @@ async function fetchToken(
   return res;
 }
 
+const openedRepls: {
+  [replId: string]: {
+    replInfo: ReplInfo;
+    client: Client<{
+      extensionContext: vscode.ExtensionContext;
+      replInfo: ReplInfo;
+    }>;
+  };
+} = {};
+
 function openReplClient(
   replInfo: ReplInfo,
   context: vscode.ExtensionContext,
@@ -229,18 +239,10 @@ function openReplClient(
     },
   );
 
+  openedRepls[replInfo.id] = { replInfo, client };
+
   return client;
 }
-
-const openedRepls: {
-  [replId: string]: {
-    replInfo: ReplInfo;
-    client: Client<{
-      extensionContext: vscode.ExtensionContext;
-      replInfo: ReplInfo;
-    }>;
-  };
-} = {};
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
   const store = await Options.create();
@@ -281,22 +283,37 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
   context.subscriptions.push(
     vscode.commands.registerCommand('replit.shell', async () => {
-      // TODO quick pick from opened repls
-      // error if there are no opened repls
-      // get client
-      // create terminal with client
-      //
+      if (Object.values(openedRepls).length === 0) {
+        return vscode.window.showErrorMessage('Please open a repl first');
+      }
+
+      const replsToPick = Object.values(openedRepls).map(
+        ({ replInfo }) => `@${replInfo.user}/${replInfo.slug} ::${replInfo.id}`,
+      );
+
+      const selected = await vscode.window.showQuickPick(replsToPick, {
+        placeHolder: 'Select a repl to open a shell to',
+      });
+
+      if (!selected) {
+        return;
+      }
+
+      const replId = selected.split('::')[1];
+
+      const { client, replInfo } = openedRepls[replId];
+
+      const terminal = vscode.window.createTerminal({
+        name: `@${replInfo.user}/${replInfo.slug}`,
+        pty: new ReplitTerminal(client),
+      });
+
+      terminal.show();
     }),
   );
 
   context.subscriptions.push(
     vscode.commands.registerCommand('replit.openrepl', async () => {
-      const apiKey = await ensureKey(store);
-
-      if (!apiKey) {
-        throw new Error('expected API key');
-      }
-
       const input = await vscode.window.showInputBox({
         prompt: 'Repl Name',
         placeHolder: '@user/repl or full url to repl',
@@ -316,10 +333,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         return vscode.window.showErrorMessage(e.message || 'Error with no message, check console');
       }
 
-      const client = openReplClient(replInfo, context, apiKey);
-
-      openedRepls[replInfo.id] = { replInfo, client };
-
+      // Insert the workspace folder at the end of the workspace list
+      // otherwise the extension gets reactivated
       const { workspaceFolders } = vscode.workspace;
       let start = 0;
       if (workspaceFolders?.length) {

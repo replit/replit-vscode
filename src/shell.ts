@@ -3,24 +3,34 @@ import { Channel, Client } from '@replit/crosis';
 
 export default class ReplitTerminal implements vscode.Pseudoterminal {
   private client: Client<vscode.ExtensionContext>;
+
   private channel: Channel | null;
+
+  private closeChannel: (() => void) | null;
+
   private dimensions: vscode.TerminalDimensions | undefined;
+
   private emitter: vscode.EventEmitter<string>;
+
   onDidWrite: vscode.Event<string>;
 
-  constructor(client: Client<vscode.ExtensionContext>) {
+  constructor(client: Client<any>) {
     this.dimensions = undefined;
     this.channel = null;
+    this.closeChannel = null;
     this.client = client;
 
     this.emitter = new vscode.EventEmitter<string>();
     this.onDidWrite = this.emitter.event;
   }
 
-  close() {}
+  close(): void {
+    if (this.closeChannel) {
+      this.closeChannel();
+    }
+  }
 
-  handleInput(input: string) {
-    console.log('input', input, !!this.channel);
+  handleInput(input: string): void {
     if (!this.channel) {
       return;
     }
@@ -28,11 +38,10 @@ export default class ReplitTerminal implements vscode.Pseudoterminal {
     this.channel.send({ input });
   }
 
-  open(dimensions: vscode.TerminalDimensions | undefined) {
-    console.log('open');
+  open(dimensions: vscode.TerminalDimensions | undefined): void {
     this.dimensions = dimensions;
 
-    this.client.openChannel({ service: 'shell' }, (result) => {
+    this.closeChannel = this.client.openChannel({ service: 'shell' }, (result) => {
       if (!result.channel) {
         return;
       }
@@ -59,7 +68,7 @@ export default class ReplitTerminal implements vscode.Pseudoterminal {
     });
   }
 
-  setDimensions(dimensions: vscode.TerminalDimensions) {
+  setDimensions(dimensions: vscode.TerminalDimensions): void {
     this.dimensions = dimensions;
 
     if (!this.channel) {
