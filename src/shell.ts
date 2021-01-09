@@ -57,7 +57,6 @@ export default class ReplitTerminal implements vscode.Pseudoterminal {
       this.channel = result.channel;
 
       result.channel.onCommand((cmd) => {
-        console.log(cmd.output);
         if (!cmd.output) {
           return;
         }
