@@ -11,8 +11,13 @@ function replIdFromUri({ path }: vscode.Uri): string {
   return path.split('/')[1];
 }
 
+const ROOT_API_PATH = '.';
 function uriToApiPath({ path }: vscode.Uri): string {
-  return `.${path}`;
+  if (path === '/') {
+    return ROOT_API_PATH;
+  }
+
+  return path.replace(/^\//, '');
 }
 
 function apiToVscodeFileType(type: api.File.Type): vscode.FileType {
