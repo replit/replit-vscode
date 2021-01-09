@@ -10,11 +10,7 @@ function replIdFromUri({ path }: vscode.Uri): string {
 }
 
 function uriToApiPath({ path }: vscode.Uri): string {
-  const pathWithoutReplId = path.split('/').slice(1).join('/');
-
-  console.log(`.${pathWithoutReplId}`);
-
-  return `.${pathWithoutReplId}`;
+  return `.${path}`;
 }
 
 function apiToVscodeFileType(type: api.File.Type): vscode.FileType {
@@ -125,7 +121,7 @@ class ReplFs implements vscode.FileSystemProvider {
   // async copy() {}
 
   // eslint-disable-next-line class-methods-use-this
-  watch(uri: vscode.Uri): vscode.Disposable {
+  watch(_: vscode.Uri): vscode.Disposable {
     return {
       dispose: () => {},
     };
@@ -274,7 +270,7 @@ class ReplFs implements vscode.FileSystemProvider {
   }
 
   async stat(uri: vscode.Uri): Promise<vscode.FileStat> {
-    console.log('stat', uri.path);
+    console.log('stat', uriToApiPath(uri));
     const filesChannel = await this.filesChanPromise;
     const res = await filesChannel.request({
       stat: { path: uriToApiPath(uri) },
@@ -368,44 +364,68 @@ class ReplFs implements vscode.FileSystemProvider {
 export class FS implements vscode.FileSystemProvider {
   private emitter: vscode.EventEmitter<vscode.FileChangeEvent[]>;
 
+  private getReplClient: (replId: string) => Promise<Client<any>>;
+
   onDidChangeFile: vscode.Event<vscode.FileChangeEvent[]>;
 
   replFsMap: {
     [replId: string]: ReplFs;
   };
 
-  constructor() {
+  constructor(getReplClient: (replId: string) => Promise<Client<any>>) {
     this.emitter = new vscode.EventEmitter<vscode.FileChangeEvent[]>();
     this.onDidChangeFile = this.emitter.event;
     this.replFsMap = {};
+    const pendingClientReqs: { [replId: string]: Promise<Client<any>> } = {};
+    this.getReplClient = async (replId: string): Promise<Client<any>> => {
+      if (pendingClientReqs[replId]) {
+        return pendingClientReqs[replId];
+      }
+
+      pendingClientReqs[replId] = getReplClient(replId);
+
+      const client = await pendingClientReqs[replId];
+
+      delete pendingClientReqs[replId];
+
+      return client;
+    };
   }
 
-  addRepl(replId: string, client: Client<any>) {
+  private async getFsForReplId(replId: string): Promise<ReplFs> {
+    if (this.replFsMap[replId]) {
+      return this.replFsMap[replId];
+    }
+
+    const client = await this.getReplClient(replId);
+    return this.addRepl(replId, client);
+  }
+
+  addRepl(replId: string, client: Client<any>): ReplFs {
     const replFs = new ReplFs(client, this.emitter);
+    console.log('created repl fs for ', replId);
     this.replFsMap[replId] = replFs;
+
+    return replFs;
   }
 
   // eslint-disable-next-line class-methods-use-this
-  watch(uri: vscode.Uri): vscode.Disposable {
+  watch(_: vscode.Uri): vscode.Disposable {
     return {
       dispose: () => {},
     };
   }
 
   async createDirectory(uri: vscode.Uri): Promise<void> {
-    const replId = replIdFromUri(uri);
+    const replId = uri.authority;
 
-    const fs = this.replFsMap[replId];
-
-    if (!fs) {
-      throw new Error('Expected fs in replFsMap');
-    }
+    const fs = await this.getFsForReplId(replId);
 
     return fs.createDirectory(uri);
   }
 
   async readDirectory(uri: vscode.Uri): Promise<[string, vscode.FileType][]> {
-    const replId = replIdFromUri(uri);
+    const replId = uri.authority;
 
     const fs = this.replFsMap[replId];
     console.log('reading ', uri.path, replId, !!fs);
@@ -422,37 +442,25 @@ export class FS implements vscode.FileSystemProvider {
     content: Uint8Array,
     options: { create: boolean; overwrite: boolean },
   ): Promise<void> {
-    const replId = replIdFromUri(uri);
+    const replId = uri.authority;
 
-    const fs = this.replFsMap[replId];
-
-    if (!fs) {
-      throw new Error('Expected fs in replFsMap');
-    }
+    const fs = await this.getFsForReplId(replId);
 
     return fs.writeFile(uri, content, options);
   }
 
   async readFile(uri: vscode.Uri): Promise<Uint8Array> {
-    const replId = replIdFromUri(uri);
+    const replId = uri.authority;
 
-    const fs = this.replFsMap[replId];
-
-    if (!fs) {
-      throw new Error('Expected fs in replFsMap');
-    }
+    const fs = await this.getFsForReplId(replId);
 
     return fs.readFile(uri);
   }
 
   async delete(uri: vscode.Uri, options: { recursive: boolean }): Promise<void> {
-    const replId = replIdFromUri(uri);
+    const replId = uri.authority;
 
-    const fs = this.replFsMap[replId];
-
-    if (!fs) {
-      throw new Error('Expected fs in replFsMap');
-    }
+    const fs = await this.getFsForReplId(replId);
 
     return fs.delete(uri, options);
   }
@@ -464,24 +472,15 @@ export class FS implements vscode.FileSystemProvider {
   ): Promise<void> {
     const replId = replIdFromUri(oldUri);
 
-    const fs = this.replFsMap[replId];
-
-    if (!fs) {
-      throw new Error('Expected fs in replFsMap');
-    }
+    const fs = await this.getFsForReplId(replId);
 
     return fs.rename(oldUri, newUri, options);
   }
 
   async stat(uri: vscode.Uri): Promise<vscode.FileStat> {
-    const replId = replIdFromUri(uri);
+    const replId = uri.authority;
 
-    const fs = this.replFsMap[replId];
-    console.log('stating ', uri.path, replId, !!fs);
-
-    if (!fs) {
-      throw new Error('Expected fs in replFsMap');
-    }
+    const fs = await this.getFsForReplId(replId);
 
     return fs.stat(uri);
   }

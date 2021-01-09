@@ -79,6 +79,8 @@
   "dependencies": {
     "@replit/crosis": "^6.0.4",
     "@replit/protocol": "^0.2.16",
+    "graphql": "^15.4.0",
+    "graphql-request": "^3.4.0",
     "node-fetch": "^2.6.1",
     "ws": "^7.4.2"
   }
