@@ -215,23 +215,29 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
   context.subscriptions.push(
     vscode.commands.registerCommand('replit.shell', async () => {
-      if (Object.values(openedRepls).length === 0) {
+      const r = Object.values(openedRepls);
+      if (r.length === 0) {
         return vscode.window.showErrorMessage('Please open a repl first');
       }
 
-      const replsToPick = Object.values(openedRepls).map(
-        ({ replInfo }) => `@${replInfo.user}/${replInfo.slug} ::${replInfo.id}`,
-      );
+      let replId;
+      if (r.length > 1) {
+        const replsToPick = Object.values(openedRepls).map(
+          ({ replInfo }) => `@${replInfo.user}/${replInfo.slug} ::${replInfo.id}`,
+        );
 
-      const selected = await vscode.window.showQuickPick(replsToPick, {
-        placeHolder: 'Select a repl to open a shell to',
-      });
+        const selected = await vscode.window.showQuickPick(replsToPick, {
+          placeHolder: 'Select a repl to open a shell to',
+        });
 
-      if (!selected) {
-        return;
+        if (!selected) {
+          return;
+        }
+
+        [, replId] = selected.split('::');
+      } else {
+        replId = r[0].replInfo.id;
       }
-
-      const replId = selected.split('::')[1];
 
       const { client, replInfo } = openedRepls[replId];
 
