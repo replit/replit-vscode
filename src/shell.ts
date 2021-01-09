@@ -11,9 +11,13 @@ export default class ReplitTerminal implements vscode.Pseudoterminal {
 
   private dimensions: vscode.TerminalDimensions | undefined;
 
-  private emitter: vscode.EventEmitter<string>;
+  private writeEmitter: vscode.EventEmitter<string>;
+
+  private closeEmitter: vscode.EventEmitter<void>;
 
   onDidWrite: vscode.Event<string>;
+
+  onDidClose: vscode.Event<void>;
 
   constructor(client: CrosisClient) {
     this.dimensions = undefined;
@@ -21,8 +25,11 @@ export default class ReplitTerminal implements vscode.Pseudoterminal {
     this.closeChannel = null;
     this.client = client;
 
-    this.emitter = new vscode.EventEmitter<string>();
-    this.onDidWrite = this.emitter.event;
+    this.writeEmitter = new vscode.EventEmitter<string>();
+    this.onDidWrite = this.writeEmitter.event;
+
+    this.closeEmitter = new vscode.EventEmitter<void>();
+    this.onDidClose = this.closeEmitter.event;
   }
 
   close(): void {
@@ -55,7 +62,7 @@ export default class ReplitTerminal implements vscode.Pseudoterminal {
           return;
         }
 
-        this.emitter.fire(cmd.output);
+        this.writeEmitter.fire(cmd.output);
       });
 
       if (this.dimensions) {
@@ -66,6 +73,14 @@ export default class ReplitTerminal implements vscode.Pseudoterminal {
           },
         });
       }
+
+      return ({ willReconnect }) => {
+        if (willReconnect) {
+          return;
+        }
+
+        this.closeEmitter.fire();
+      };
     });
   }
 
