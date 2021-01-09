@@ -1,13 +1,12 @@
 /* eslint-disable max-classes-per-file */
 import { Client } from '@replit/crosis';
-import { api } from '@replit/protocol';
 import fetch, { Response } from 'node-fetch';
 import { AbortSignal } from 'node-fetch/externals';
 import * as vscode from 'vscode';
 import ws from 'ws';
 import { FS } from './fs';
 import { Options } from './options';
-import ReplitTerminal from './shell';
+// import ReplitTerminal from './shell';
 
 const BAD_KEY_MSG = 'Please enter a valid crosis key';
 
@@ -236,6 +235,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         client,
       };
 
+      fs.addRepl(replInfo.id, client);
+
       client.open(
         {
           context: {
@@ -279,9 +280,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         },
       );
 
+      console.log(vscode.Uri.parse(`replit:/${replInfo.id}`))
+
       vscode.workspace.updateWorkspaceFolders(0, 0, {
-        uri: vscode.Uri.parse(`replit://${replInfo.id}`),
-        name: '@masfrost/vscode-demo',
+        uri: vscode.Uri.parse(`replit:/${replInfo.id}`),
+        name: `@${replInfo.user}/${replInfo.slug}`,
       });
     }),
   );

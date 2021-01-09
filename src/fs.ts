@@ -66,7 +66,7 @@ export class FS implements vscode.FileSystemProvider {
     this.replFsMap = {};
   }
 
-  addRepl(replId: string, client: Client<vscode.ExtensionContext>) {
+  addRepl(replId: string, client: Client<any>) {
     const replFs = new ReplFs(client, this.emitter);
     this.replFsMap[replId] = replFs;
   }
@@ -95,7 +95,9 @@ export class FS implements vscode.FileSystemProvider {
   async readDirectory(uri: vscode.Uri): Promise<[string, vscode.FileType][]> {
     const replId = replIdFromUri(uri);
 
+
     const fs = this.replFsMap[replId];
+    console.log('reading ', uri.path, replId, !!fs)
 
     if (!fs) {
       throw new Error('Expected fs in replFsMap');
@@ -181,7 +183,7 @@ class ReplFs implements vscode.FileSystemProvider {
   onDidChangeFile: vscode.Event<vscode.FileChangeEvent[]>;
 
   constructor(
-    client: Client<vscode.ExtensionContext>,
+    client: Client<any>,
     emitter: vscode.EventEmitter<vscode.FileChangeEvent[]>,
   ) {
     let resolveFilesChan: (filesChan: Channel) => void;
