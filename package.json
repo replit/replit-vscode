@@ -2,7 +2,7 @@
   "name": "replit",
   "displayName": "replit",
   "description": "",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "publisher": "masad-frost",
   "repository": "https://github.com/replit/replit-vscode",
   "engines": {
