@@ -20,6 +20,11 @@
         "command": "replit.init",
         "title": "init",
         "category": "Replit"
+      },
+      {
+        "command": "replit.shell",
+        "title": "shell",
+        "category": "Replit"
       }
     ],
     "menus": {
@@ -27,6 +32,10 @@
         {
           "command": "replit.init",
           "when": "workbenchState != workspace"
+        },
+        {
+          "command": "replit.shell",
+          "when": "workbenchState == workspace"
         }
       ]
     }

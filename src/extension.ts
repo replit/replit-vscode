@@ -6,6 +6,7 @@ import * as vscode from 'vscode';
 import ws from 'ws';
 import { FS } from './fs';
 import { Options } from './options';
+import ReplitTerminal from './shell';
 
 const BAD_KEY_MSG = 'Please enter a valid crosis key';
 
@@ -205,6 +206,15 @@ const initialize = async (store: Options, ctx: vscode.ExtensionContext) => {
     }),
   );
 
+  ctx.subscriptions.push(
+    vscode.commands.registerCommand('replit.shell', () => {
+      vscode.window.createTerminal({
+        name: 'repl',
+        pty: new ReplitTerminal(client),
+      });
+    }),
+  );
+
   client.open(
     {
       context: ctx,
@@ -251,7 +261,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.commands.registerCommand('replit.init', () =>
       vscode.workspace.updateWorkspaceFolders(0, 0, {
         uri: vscode.Uri.parse('replit:/'),
-        name: 'Repl.it',
+        name: '@masfrost/python3',
       }),
     ),
   );
