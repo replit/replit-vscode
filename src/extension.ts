@@ -105,11 +105,44 @@ function openReplClient(
       WebSocketClass: ws as WebSocket,
     },
     (result) => {
-      if (result.channel) {
-        vscode.window.showInformationMessage(
-          `Repl.it: @${replInfo.user}/${replInfo.slug} connected`,
-        );
+      if (!result.channel) {
+        return;
       }
+
+      vscode.window.showInformationMessage(`Repl.it: @${replInfo.user}/${replInfo.slug} connected`);
+
+      result.channel.onCommand((cmd) => {
+        if (cmd.portOpen?.forwarded) {
+          const panel = vscode.window.createWebviewPanel(
+            'replView',
+            `@${replInfo.user}/${replInfo.slug} webview`,
+            vscode.ViewColumn.One,
+            {},
+          );
+
+          panel.webview.html = `<!DOCTYPE html>
+<head>
+  <style>
+   html, body, iframe {
+     height: 100%;
+     width: 100%;
+     background: white;
+     border: none;
+     padding: 0;
+     margin: 0;
+     display: block;
+   }
+  </style>
+</head>
+  <body>
+    <iframe
+    sandbox="allow-forms allow-pointer-lock allow-popups allow-same-origin allow-scripts allow-modals"
+    src="https://${replInfo.id}.id.repl.co"
+    ><iframe>
+  </body>
+</html>`;
+        }
+      });
 
       return ({ willReconnect }) => {
         if (willReconnect) {
