@@ -1,26 +1,44 @@
 import * as vscode from 'vscode';
-import { Channel, Client } from '@replit/crosis';
+import { Channel } from '@replit/crosis';
+import { CrosisClient } from './types';
 
 export default class ReplitTerminal implements vscode.Pseudoterminal {
-  private client: Client<vscode.ExtensionContext>;
+  private client: CrosisClient;
+
   private channel: Channel | null;
+
+  private closeChannel: (() => void) | null;
+
   private dimensions: vscode.TerminalDimensions | undefined;
-  private emitter: vscode.EventEmitter<string>;
+
+  private writeEmitter: vscode.EventEmitter<string>;
+
+  private closeEmitter: vscode.EventEmitter<void>;
+
   onDidWrite: vscode.Event<string>;
 
-  constructor(client: Client<vscode.ExtensionContext>) {
+  onDidClose: vscode.Event<void>;
+
+  constructor(client: CrosisClient) {
     this.dimensions = undefined;
     this.channel = null;
+    this.closeChannel = null;
     this.client = client;
 
-    this.emitter = new vscode.EventEmitter<string>();
-    this.onDidWrite = this.emitter.event;
+    this.writeEmitter = new vscode.EventEmitter<string>();
+    this.onDidWrite = this.writeEmitter.event;
+
+    this.closeEmitter = new vscode.EventEmitter<void>();
+    this.onDidClose = this.closeEmitter.event;
   }
 
-  close() {}
+  close(): void {
+    if (this.closeChannel) {
+      this.closeChannel();
+    }
+  }
 
-  handleInput(input: string) {
-    console.log('input', input, !!this.channel);
+  handleInput(input: string): void {
     if (!this.channel) {
       return;
     }
@@ -28,11 +46,10 @@ export default class ReplitTerminal implements vscode.Pseudoterminal {
     this.channel.send({ input });
   }
 
-  open(dimensions: vscode.TerminalDimensions | undefined) {
-    console.log('open');
+  open(dimensions: vscode.TerminalDimensions | undefined): void {
     this.dimensions = dimensions;
 
-    this.client.openChannel({ service: 'shell' }, (result) => {
+    this.closeChannel = this.client.openChannel({ service: 'shell' }, (result) => {
       if (!result.channel) {
         return;
       }
@@ -45,7 +62,7 @@ export default class ReplitTerminal implements vscode.Pseudoterminal {
           return;
         }
 
-        this.emitter.fire(cmd.output);
+        this.writeEmitter.fire(cmd.output);
       });
 
       if (this.dimensions) {
@@ -56,10 +73,18 @@ export default class ReplitTerminal implements vscode.Pseudoterminal {
           },
         });
       }
+
+      return ({ willReconnect }) => {
+        if (willReconnect) {
+          return;
+        }
+
+        this.closeEmitter.fire();
+      };
     });
   }
 
-  setDimensions(dimensions: vscode.TerminalDimensions) {
+  setDimensions(dimensions: vscode.TerminalDimensions): void {
     this.dimensions = dimensions;
 
     if (!this.channel) {

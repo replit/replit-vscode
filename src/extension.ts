@@ -1,105 +1,45 @@
 /* eslint-disable max-classes-per-file */
 import { Client } from '@replit/crosis';
-import fetch, { Response } from 'node-fetch';
-import { AbortSignal } from 'node-fetch/externals';
 import * as vscode from 'vscode';
 import ws from 'ws';
 import { FS } from './fs';
 import { Options } from './options';
 import ReplitTerminal from './shell';
+import { CrosisClient, ReplInfo } from './types';
+import { fetchToken, getReplInfo } from './api';
 
 const BAD_KEY_MSG = 'Please enter a valid crosis key';
-
-export const isReplId = (replId: string): boolean => !!replId && replId.split('-').length === 5;
-
-async function getReplId(user: string, slug: string): Promise<string> {
-  const r: Response | undefined = await fetch(`https://repl.it/data/repls/@${user}/${slug}`, {
-    headers: {
-      accept: 'application/json',
-      'user-agent': 'ezcrosis',
-      'x-requested-with': 'ezcrosis',
-    },
-  });
-
-  if (r.status === 404) {
-    throw new Error(
-      'Repl not found, did you make a typo? ' +
-        'If this is a private repl, go to ' +
-        `https://repl.it/data/repls/@${user}/${slug} ` +
-        'and find the part that looks like {"id": "COPY THIS"} and paste just the ID ' +
-        'back in the repl prompt.',
-    );
-  }
-
-  if (r.status !== 200) {
-    let text;
-    try {
-      text = await r.text();
-    } catch (e) {
-      text = '';
-    }
-    throw new Error(
-      `Got invalid status ${
-        r.status
-      } while fetching data for @${user}/${slug}, data: ${JSON.stringify(text)}`,
-    );
-  }
-
-  const data = await r.json();
-
-  if (data && typeof data.id === 'string') {
-    return data.id;
-  }
-
-  throw new Error(`Invalid response received: ${data}`);
-}
-
-export async function parseRepl(repl: string): Promise<string | null> {
-  // If its a repl id, we're already done
-  if (isReplId(repl)) return repl;
-
-  // Check if user included full URL using a simple regex
-  const urlRegex = /(?:http(?:s?):\/\/repl\.it\/)?@(.+)\/([^?\s#]+)/g;
-  const match = urlRegex.exec(repl);
-  if (!match) {
-    return null;
-  }
-
-  const [, user, slug] = match;
-
-  return getReplId(user, slug);
-}
 
 // Simple key regex. No need to be strict here.
 const validKey = (key: string): boolean => !!key && /[a-zA-Z0-9/=]+:[a-zA-Z0-9/=]+/.test(key);
 
-/*
-vscode.workspace.updateWorkspaceFolders(0, 0, {
-    uri: vscode.Uri.parse("replit:/"),
-    name: "random testing repl",
-  }); */
-
-const ensureKey = async (store: Options): Promise<string | null> => {
-  let storedKey: string;
-  try {
-    const key = await store.get('key');
-    if (typeof key === 'string') {
-      storedKey = key;
-    } else {
+const ensureKey = async (
+  store: Options,
+  { forceNew }: { forceNew: boolean } = { forceNew: false },
+): Promise<string | null> => {
+  if (!forceNew) {
+    let storedKey: string;
+    try {
+      const key = await store.get('key');
+      if (typeof key === 'string') {
+        storedKey = key;
+      } else {
+        storedKey = '';
+      }
+    } catch (e) {
+      console.error(e);
       storedKey = '';
     }
-  } catch (e) {
-    console.error(e);
-    storedKey = '';
+
+    if (storedKey && validKey(storedKey)) {
+      return storedKey;
+    }
   }
 
-  if (storedKey && validKey(storedKey)) {
-    return storedKey;
-  }
   const newKey = await vscode.window.showInputBox({
     prompt: 'Crosis API Key',
     placeHolder: 'Enter your api key from https://devs.turbio.repl.co',
-    value: storedKey || '',
+    value: '',
     ignoreFocusOut: true,
     validateInput: (val) => (validKey(val) ? '' : BAD_KEY_MSG),
   });
@@ -112,121 +52,50 @@ const ensureKey = async (store: Options): Promise<string | null> => {
   return null;
 };
 
-class TokenFetchError extends Error {
-  res: unknown;
-}
+const openedRepls: {
+  [replId: string]: {
+    replInfo: ReplInfo;
+    client: CrosisClient;
+  };
+} = {};
 
-async function fetchToken(
-  abortSignal: AbortSignal,
-  replId: string,
+function openReplClient(
+  replInfo: ReplInfo,
+  context: vscode.ExtensionContext,
   apiKey: string,
-): Promise<string> {
-  const r = await fetch(`https://repl.it/api/v0/repls/${replId}/token`, {
-    signal: abortSignal,
-    method: 'POST',
-    headers: {
-      accept: 'application/json',
-      'content-Type': 'application/json',
-      'user-agent': 'ezcrosis',
-      'x-requested-with': 'ezcrosis',
-    },
-    body: JSON.stringify({ apiKey }),
-  });
-  const text = await r.text();
+): CrosisClient {
+  vscode.window.showInformationMessage(`Repl.it: connecting to @${replInfo.user}/${replInfo.slug}`);
 
-  let res;
-  try {
-    res = JSON.parse(text);
-  } catch (e) {
-    throw new Error(`Invalid JSON while fetching token for ${replId}: ${JSON.stringify(text)}`);
-  }
-
-  if (typeof res !== 'string') {
-    const err = new TokenFetchError(`Invalid token response: ${res}`);
-    err.res = res;
-    throw err;
-  }
-  return res;
-}
-
-/**
- * Called when the user invokes Replit: init from the command palette.
- */
-const initialize = async (store: Options, ctx: vscode.ExtensionContext) => {
-  const apiKey = await ensureKey(store);
-  if (!apiKey) return;
-
-  let replId: string;
-  const storedId = ctx.workspaceState.get('replId');
-
-  if (typeof storedId === 'string') {
-    replId = storedId;
-  } else {
-    const newRepl = await vscode.window.showInputBox({
-      prompt: 'Repl Name',
-      placeHolder: 'Repl link, @user/repl string, or repl id',
-      ignoreFocusOut: true,
-    });
-
-    if (!newRepl) return;
-
-    let newReplId;
-    try {
-      newReplId = await parseRepl(newRepl);
-    } catch (e) {
-      vscode.window.showErrorMessage(e?.message || 'Error with no message, check console');
-
-      // eslint-disable-next-line no-console
-      console.error(e);
-
-      return;
-    }
-
-    if (!newReplId) {
-      vscode.window.showErrorMessage('Invalid repl');
-      return;
-    }
-
-    await ctx.workspaceState.update('replId', newReplId);
-    replId = newReplId;
-  }
-
-  console.log(`Connecting to repl ID ${JSON.stringify(replId)}...`);
-  const client = new Client<vscode.ExtensionContext>();
+  const client = new Client<{
+    extensionContext: vscode.ExtensionContext;
+    replInfo: ReplInfo;
+  }>();
   client.setUnrecoverableErrorHandler((e: Error) => {
+    delete openedRepls[replInfo.id];
     console.error(e);
     vscode.window.showErrorMessage(e.message);
   });
 
-  console.log('Creating FS...');
-  const fs = new FS(client);
-  ctx.subscriptions.push(
-    vscode.workspace.registerFileSystemProvider('replit', fs, {
-      isCaseSensitive: true,
-    }),
-  );
-
-  ctx.subscriptions.push(
-    vscode.commands.registerCommand('replit.shell', () => {
-      vscode.window.createTerminal({
-        name: 'repl',
-        pty: new ReplitTerminal(client),
-      });
-    }),
-  );
-
   client.open(
     {
-      context: ctx,
+      context: {
+        extensionContext: context,
+        replInfo,
+      },
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       fetchToken: async (abortSignal: any) => {
+        if (!apiKey) {
+          throw new Error('Repl.it: Failed to open repl, no API key provided');
+        }
+
         let token;
         try {
-          token = await fetchToken(abortSignal, replId, apiKey);
+          token = await fetchToken(abortSignal, replInfo.id, apiKey);
         } catch (e) {
           if (e.name === 'AbortError') {
             return { aborted: true, token: null };
           }
+
           throw e;
         }
         return { token, aborted: false };
@@ -237,32 +106,157 @@ const initialize = async (store: Options, ctx: vscode.ExtensionContext) => {
     },
     (result) => {
       if (result.channel) {
-        vscode.window.showInformationMessage('Repl.it: Connected');
+        vscode.window.showInformationMessage(
+          `Repl.it: @${replInfo.user}/${replInfo.slug} connected`,
+        );
       }
 
       return ({ willReconnect }) => {
         if (willReconnect) {
-          vscode.window.showWarningMessage('Repl.it: Unexpected disconnect, reconnecting...');
+          vscode.window.showWarningMessage(
+            `Repl.it: @${replInfo.user}/${replInfo.slug} unexpectedly disconnected, reconnecting...`,
+          );
         } else {
-          vscode.window.showWarningMessage('Repl.it: Disconnected');
+          vscode.window.showWarningMessage(
+            `Repl.it: @${replInfo.user}/${replInfo.slug} connection permanently disconnected`,
+          );
         }
       };
     },
   );
-};
+
+  openedRepls[replInfo.id] = { replInfo, client };
+
+  return client;
+}
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
-  console.log('Extension activating...');
   const store = await Options.create();
-  console.log('Initializing...');
-  await initialize(store, context);
+  await ensureKey(store);
+
+  const fs = new FS(async (replId) => {
+    if (openedRepls[replId]) {
+      return openedRepls[replId].client;
+    }
+
+    const apiKey = await ensureKey(store);
+
+    if (!apiKey) {
+      vscode.window.showErrorMessage('Expected API key');
+
+      throw new Error('expected API key');
+    }
+
+    let replInfo: ReplInfo;
+    try {
+      replInfo = await getReplInfo(replId);
+    } catch (e) {
+      console.error(e);
+
+      vscode.window.showErrorMessage(e.message || 'Error with no message, check console');
+
+      throw e;
+    }
+
+    return openReplClient(replInfo, context, apiKey);
+  });
 
   context.subscriptions.push(
-    vscode.commands.registerCommand('replit.init', () =>
-      vscode.workspace.updateWorkspaceFolders(0, 0, {
-        uri: vscode.Uri.parse('replit:/'),
-        name: '@masfrost/python3',
-      }),
+    vscode.workspace.registerFileSystemProvider('replit', fs, {
+      isCaseSensitive: true,
+    }),
+  );
+
+  context.subscriptions.push(
+    vscode.workspace.onDidChangeWorkspaceFolders((ev) => {
+      ev.removed.forEach((folder) => {
+        const maybeReplId = folder.uri.authority;
+
+        if (openedRepls[maybeReplId]) {
+          openedRepls[maybeReplId].client.destroy();
+          delete openedRepls[maybeReplId];
+        }
+      });
+    }),
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand('replit.shell', async () => {
+      if (Object.values(openedRepls).length === 0) {
+        return vscode.window.showErrorMessage('Please open a repl first');
+      }
+
+      const replsToPick = Object.values(openedRepls).map(
+        ({ replInfo }) => `@${replInfo.user}/${replInfo.slug} ::${replInfo.id}`,
+      );
+
+      const selected = await vscode.window.showQuickPick(replsToPick, {
+        placeHolder: 'Select a repl to open a shell to',
+      });
+
+      if (!selected) {
+        return;
+      }
+
+      const replId = selected.split('::')[1];
+
+      const { client, replInfo } = openedRepls[replId];
+
+      const terminal = vscode.window.createTerminal({
+        name: `@${replInfo.user}/${replInfo.slug}`,
+        pty: new ReplitTerminal(client),
+      });
+
+      terminal.show();
+    }),
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand('replit.apikey', async () =>
+      ensureKey(store, { forceNew: true }),
     ),
   );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand('replit.openrepl', async () => {
+      const input = await vscode.window.showInputBox({
+        prompt: 'Repl Name',
+        placeHolder: '@user/repl or full url to repl',
+        ignoreFocusOut: true,
+      });
+
+      if (!input) {
+        return vscode.window.showErrorMessage('Repl.it: please supply a valid repl url or id');
+      }
+
+      let replInfo: ReplInfo;
+      try {
+        replInfo = await getReplInfo(input);
+      } catch (e) {
+        console.error(e);
+
+        return vscode.window.showErrorMessage(e.message || 'Error with no message, check console');
+      }
+
+      // Insert the workspace folder at the end of the workspace list
+      // otherwise the extension gets decativated and reactivated
+      const { workspaceFolders } = vscode.workspace;
+      let start = 0;
+      if (workspaceFolders?.length) {
+        start = workspaceFolders.length;
+      }
+
+      vscode.workspace.updateWorkspaceFolders(start, 0, {
+        uri: vscode.Uri.parse(`replit://${replInfo.id}/`),
+        name: `@${replInfo.user}/${replInfo.slug}`,
+      });
+    }),
+  );
+}
+
+export function deactivate(): void {
+  Object.values(openedRepls).forEach(({ client, replInfo }) => {
+    delete openedRepls[replInfo.id];
+    client.destroy();
+  });
 }

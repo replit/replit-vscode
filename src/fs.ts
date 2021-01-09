@@ -1,12 +1,17 @@
 /* eslint-disable class-methods-use-this */
-import { Channel, Client } from '@replit/crosis';
+// eslint-disable-next-line max-classes-per-file
+import { Channel } from '@replit/crosis';
 import { api } from '@replit/protocol';
 import { posix as posixPath } from 'path';
 import * as vscode from 'vscode';
+import { CrosisClient } from './types';
 
-function uriToApiPath(uri: vscode.Uri): string {
-  // strip out leading slash, we can also add a dot before the slash
-  return `.${uri.path}`;
+function replIdFromUri({ path }: vscode.Uri): string {
+  return path.split('/')[1];
+}
+
+function uriToApiPath({ path }: vscode.Uri): string {
+  return `.${path}`;
 }
 
 function apiToVscodeFileType(type: api.File.Type): vscode.FileType {
@@ -47,14 +52,18 @@ function handleError(errStr: string, uri: vscode.Uri): null {
   throw new Error(errStr);
 }
 
-export class FS implements vscode.FileSystemProvider {
+class ReplFs implements vscode.FileSystemProvider {
   private filesChanPromise: Promise<Channel>;
 
   private emitter: vscode.EventEmitter<vscode.FileChangeEvent[]>;
 
   onDidChangeFile: vscode.Event<vscode.FileChangeEvent[]>;
 
-  constructor(client: Client<vscode.ExtensionContext>) {
+  constructor(
+    client: CrosisClient,
+    emitter: vscode.EventEmitter<vscode.FileChangeEvent[]>,
+    onClose: () => void,
+  ) {
     let resolveFilesChan: (filesChan: Channel) => void;
     let reject: (e: vscode.FileSystemError) => void;
     this.filesChanPromise = new Promise((res, rej) => {
@@ -74,6 +83,9 @@ export class FS implements vscode.FileSystemProvider {
       return ({ willReconnect }) => {
         if (!willReconnect) {
           reject(vscode.FileSystemError.Unavailable());
+          onClose();
+
+          return;
         }
 
         this.filesChanPromise = new Promise((res, rej) => {
@@ -83,7 +95,7 @@ export class FS implements vscode.FileSystemProvider {
       };
     });
 
-    this.emitter = new vscode.EventEmitter<vscode.FileChangeEvent[]>();
+    this.emitter = emitter;
     this.onDidChangeFile = this.emitter.event;
 
     // TODO open fsevents and snapshots
@@ -117,9 +129,7 @@ export class FS implements vscode.FileSystemProvider {
   // async copy() {}
 
   // eslint-disable-next-line class-methods-use-this
-  watch(uri: vscode.Uri): vscode.Disposable {
-    console.log('watch', uri.path);
-    // What is this for?
+  watch(_: vscode.Uri): vscode.Disposable {
     return {
       dispose: () => {},
     };
@@ -144,7 +154,6 @@ export class FS implements vscode.FileSystemProvider {
   }
 
   async readDirectory(uri: vscode.Uri): Promise<[string, vscode.FileType][]> {
-    console.log('readDirectory', uri.path);
     const filesChannel = await this.filesChanPromise;
     const res = await filesChannel.request({
       readdir: { path: uriToApiPath(uri) },
@@ -211,7 +220,6 @@ export class FS implements vscode.FileSystemProvider {
     newUri: vscode.Uri,
     options: { overwrite: boolean },
   ): Promise<void> {
-    console.log('rename', oldUri.path, newUri.path);
     if (uriToApiPath(oldUri) === uriToApiPath(newUri)) {
       return;
     }
@@ -268,7 +276,6 @@ export class FS implements vscode.FileSystemProvider {
   }
 
   async stat(uri: vscode.Uri): Promise<vscode.FileStat> {
-    console.log('stat', uri.path);
     const filesChannel = await this.filesChanPromise;
     const res = await filesChannel.request({
       stat: { path: uriToApiPath(uri) },
@@ -302,7 +309,6 @@ export class FS implements vscode.FileSystemProvider {
     content: Uint8Array,
     options: { create: boolean; overwrite: boolean },
   ): Promise<void> {
-    console.log('writeFile', uri.path, Buffer.from(content).toString('utf8'), options);
     const filesChannel = await this.filesChanPromise;
 
     // Replit's api for `write` always creates and overwrites, where as vscode expects us
@@ -356,5 +362,130 @@ export class FS implements vscode.FileSystemProvider {
     evts.push({ type: vscode.FileChangeType.Changed, uri });
 
     this.emitter.fire(evts);
+  }
+}
+
+export class FS implements vscode.FileSystemProvider {
+  private emitter: vscode.EventEmitter<vscode.FileChangeEvent[]>;
+
+  private getReplClient: (replId: string) => Promise<CrosisClient>;
+
+  onDidChangeFile: vscode.Event<vscode.FileChangeEvent[]>;
+
+  replFsMap: {
+    [replId: string]: ReplFs;
+  };
+
+  constructor(getReplClient: (replId: string) => Promise<CrosisClient>) {
+    this.emitter = new vscode.EventEmitter<vscode.FileChangeEvent[]>();
+    this.onDidChangeFile = this.emitter.event;
+    this.replFsMap = {};
+    const pendingClientReqs: { [replId: string]: Promise<CrosisClient> } = {};
+    this.getReplClient = async (replId: string): Promise<CrosisClient> => {
+      if (pendingClientReqs[replId]) {
+        return pendingClientReqs[replId];
+      }
+
+      pendingClientReqs[replId] = getReplClient(replId);
+
+      const client = await pendingClientReqs[replId];
+
+      delete pendingClientReqs[replId];
+
+      return client;
+    };
+  }
+
+  private async getFsForReplId(replId: string): Promise<ReplFs> {
+    if (this.replFsMap[replId]) {
+      return this.replFsMap[replId];
+    }
+
+    const client = await this.getReplClient(replId);
+    return this.addRepl(replId, client);
+  }
+
+  addRepl(replId: string, client: CrosisClient): ReplFs {
+    const replFs = new ReplFs(client, this.emitter, () => {
+      delete this.replFsMap[replId];
+    });
+    this.replFsMap[replId] = replFs;
+
+    return replFs;
+  }
+
+  // eslint-disable-next-line class-methods-use-this
+  watch(_: vscode.Uri): vscode.Disposable {
+    return {
+      dispose: () => {},
+    };
+  }
+
+  async createDirectory(uri: vscode.Uri): Promise<void> {
+    const replId = uri.authority;
+
+    const fs = await this.getFsForReplId(replId);
+
+    return fs.createDirectory(uri);
+  }
+
+  async readDirectory(uri: vscode.Uri): Promise<[string, vscode.FileType][]> {
+    const replId = uri.authority;
+
+    const fs = this.replFsMap[replId];
+
+    if (!fs) {
+      throw new Error('Expected fs in replFsMap');
+    }
+
+    return fs.readDirectory(uri);
+  }
+
+  async writeFile(
+    uri: vscode.Uri,
+    content: Uint8Array,
+    options: { create: boolean; overwrite: boolean },
+  ): Promise<void> {
+    const replId = uri.authority;
+
+    const fs = await this.getFsForReplId(replId);
+
+    return fs.writeFile(uri, content, options);
+  }
+
+  async readFile(uri: vscode.Uri): Promise<Uint8Array> {
+    const replId = uri.authority;
+
+    const fs = await this.getFsForReplId(replId);
+
+    return fs.readFile(uri);
+  }
+
+  async delete(uri: vscode.Uri, options: { recursive: boolean }): Promise<void> {
+    const replId = uri.authority;
+
+    const fs = await this.getFsForReplId(replId);
+
+    return fs.delete(uri, options);
+  }
+
+  async rename(
+    oldUri: vscode.Uri,
+    newUri: vscode.Uri,
+    options: { overwrite: boolean },
+  ): Promise<void> {
+    const replId = replIdFromUri(oldUri);
+
+    const fs = await this.getFsForReplId(replId);
+
+    return fs.rename(oldUri, newUri, options);
+  }
+
+  async stat(uri: vscode.Uri): Promise<vscode.FileStat> {
+    const replId = uri.authority;
+
+    const fs = await this.getFsForReplId(replId);
+
+    return fs.stat(uri);
   }
 }

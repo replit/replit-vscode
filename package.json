@@ -11,28 +11,29 @@
   ],
   "activationEvents": [
     "onFileSystem:replit",
-    "onCommand:replit.init"
+    "onCommand:replit.openrepl"
   ],
   "main": "./dist/extension.js",
   "contributes": {
     "commands": [
       {
-        "command": "replit.init",
-        "title": "init",
+        "command": "replit.openrepl",
+        "title": "Open a repl",
         "category": "Replit"
       },
       {
         "command": "replit.shell",
-        "title": "shell",
+        "title": "Open a shell for a repl",
+        "category": "Replit"
+      },
+      {
+        "command": "replit.apikey",
+        "title": "Add or change API key",
         "category": "Replit"
       }
     ],
     "menus": {
       "commandPalette": [
-        {
-          "command": "replit.init",
-          "when": "workbenchState != workspace"
-        },
         {
           "command": "replit.shell",
           "when": "workbenchState == workspace"
@@ -83,6 +84,8 @@
   "dependencies": {
     "@replit/crosis": "^6.0.4",
     "@replit/protocol": "^0.2.16",
+    "graphql": "^15.4.0",
+    "graphql-request": "^3.4.0",
     "node-fetch": "^2.6.1",
     "ws": "^7.4.2"
   }
