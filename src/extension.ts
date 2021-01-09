@@ -280,7 +280,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         },
       );
 
-      console.log(vscode.Uri.parse(`replit:/${replInfo.id}`))
+      console.log(vscode.Uri.parse(`replit:/${replInfo.id}`));
 
       vscode.workspace.updateWorkspaceFolders(0, 0, {
         uri: vscode.Uri.parse(`replit:/${replInfo.id}`),
