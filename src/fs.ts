@@ -4,6 +4,7 @@ import { Channel } from '@replit/crosis';
 import { api } from '@replit/protocol';
 import { posix as posixPath } from 'path';
 import * as vscode from 'vscode';
+import debounce from 'lodash.debounce';
 import { CrosisClient } from './types';
 
 function replIdFromUri({ path }: vscode.Uri): string {
@@ -98,7 +99,31 @@ class ReplFs implements vscode.FileSystemProvider {
     this.emitter = emitter;
     this.onDidChangeFile = this.emitter.event;
 
-    // TODO open fsevents and snapshots
+    // TODO open fsevents and do watching
+
+    client.openChannel({ service: 'snapshot' }, (result) => {
+      if (result.error) {
+        return;
+      }
+
+      // TODO:
+      // Better guarantees for snapshotting
+      // 1. make sure to fire pending snapshot before closing the workspace folder
+      // 2. notify user about pending snapshots
+      const doSnapshot = debounce(
+        () => {
+          result.channel.send({ fsSnapshot: {} });
+        },
+        5000,
+        { maxWait: 10000 },
+      );
+      const { dispose } = this.onDidChangeFile(doSnapshot);
+
+      return () => {
+        dispose();
+        doSnapshot.cancel();
+      };
+    });
   }
 
   // This is called when we want to retry after we get channelClosed
