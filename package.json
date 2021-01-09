@@ -18,12 +18,17 @@
     "commands": [
       {
         "command": "replit.openrepl",
-        "title": "Select a repl",
+        "title": "Open a repl",
         "category": "Replit"
       },
       {
         "command": "replit.shell",
-        "title": "shell",
+        "title": "Open a shell for a repl",
+        "category": "Replit"
+      },
+      {
+        "command": "replit.apikey",
+        "title": "Add or change API key",
         "category": "Replit"
       }
     ],

@@ -13,27 +13,33 @@ const BAD_KEY_MSG = 'Please enter a valid crosis key';
 // Simple key regex. No need to be strict here.
 const validKey = (key: string): boolean => !!key && /[a-zA-Z0-9/=]+:[a-zA-Z0-9/=]+/.test(key);
 
-const ensureKey = async (store: Options): Promise<string | null> => {
-  let storedKey: string;
-  try {
-    const key = await store.get('key');
-    if (typeof key === 'string') {
-      storedKey = key;
-    } else {
+const ensureKey = async (
+  store: Options,
+  { forceNew }: { forceNew: boolean } = { forceNew: false },
+): Promise<string | null> => {
+  if (!forceNew) {
+    let storedKey: string;
+    try {
+      const key = await store.get('key');
+      if (typeof key === 'string') {
+        storedKey = key;
+      } else {
+        storedKey = '';
+      }
+    } catch (e) {
+      console.error(e);
       storedKey = '';
     }
-  } catch (e) {
-    console.error(e);
-    storedKey = '';
+
+    if (storedKey && validKey(storedKey)) {
+      return storedKey;
+    }
   }
 
-  if (storedKey && validKey(storedKey)) {
-    return storedKey;
-  }
   const newKey = await vscode.window.showInputBox({
     prompt: 'Crosis API Key',
     placeHolder: 'Enter your api key from https://devs.turbio.repl.co',
-    value: storedKey || '',
+    value: '',
     ignoreFocusOut: true,
     validateInput: (val) => (validKey(val) ? '' : BAD_KEY_MSG),
   });
@@ -203,6 +209,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
       terminal.show();
     }),
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand('replit.apikey', async () =>
+      ensureKey(store, { forceNew: true }),
+    ),
   );
 
   context.subscriptions.push(
