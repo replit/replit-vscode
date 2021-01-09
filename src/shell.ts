@@ -1,8 +1,9 @@
 import * as vscode from 'vscode';
-import { Channel, Client } from '@replit/crosis';
+import { Channel } from '@replit/crosis';
+import { CrosisClient } from './types';
 
 export default class ReplitTerminal implements vscode.Pseudoterminal {
-  private client: Client<vscode.ExtensionContext>;
+  private client: CrosisClient;
 
   private channel: Channel | null;
 
@@ -14,7 +15,7 @@ export default class ReplitTerminal implements vscode.Pseudoterminal {
 
   onDidWrite: vscode.Event<string>;
 
-  constructor(client: Client<any>) {
+  constructor(client: CrosisClient) {
     this.dimensions = undefined;
     this.channel = null;
     this.closeChannel = null;

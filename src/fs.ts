@@ -1,9 +1,10 @@
 /* eslint-disable class-methods-use-this */
 // eslint-disable-next-line max-classes-per-file
-import { Channel, Client } from '@replit/crosis';
+import { Channel } from '@replit/crosis';
 import { api } from '@replit/protocol';
 import { posix as posixPath } from 'path';
 import * as vscode from 'vscode';
+import { CrosisClient } from './types';
 
 function replIdFromUri({ path }: vscode.Uri): string {
   return path.split('/')[1];
@@ -58,7 +59,11 @@ class ReplFs implements vscode.FileSystemProvider {
 
   onDidChangeFile: vscode.Event<vscode.FileChangeEvent[]>;
 
-  constructor(client: Client<any>, emitter: vscode.EventEmitter<vscode.FileChangeEvent[]>) {
+  constructor(
+    client: CrosisClient,
+    emitter: vscode.EventEmitter<vscode.FileChangeEvent[]>,
+    onClose: () => void,
+  ) {
     let resolveFilesChan: (filesChan: Channel) => void;
     let reject: (e: vscode.FileSystemError) => void;
     this.filesChanPromise = new Promise((res, rej) => {
@@ -78,6 +83,9 @@ class ReplFs implements vscode.FileSystemProvider {
       return ({ willReconnect }) => {
         if (!willReconnect) {
           reject(vscode.FileSystemError.Unavailable());
+          onClose();
+
+          return;
         }
 
         this.filesChanPromise = new Promise((res, rej) => {
@@ -146,7 +154,6 @@ class ReplFs implements vscode.FileSystemProvider {
   }
 
   async readDirectory(uri: vscode.Uri): Promise<[string, vscode.FileType][]> {
-    console.log('readDirectory', uri.path);
     const filesChannel = await this.filesChanPromise;
     const res = await filesChannel.request({
       readdir: { path: uriToApiPath(uri) },
@@ -213,7 +220,6 @@ class ReplFs implements vscode.FileSystemProvider {
     newUri: vscode.Uri,
     options: { overwrite: boolean },
   ): Promise<void> {
-    console.log('rename', oldUri.path, newUri.path);
     if (uriToApiPath(oldUri) === uriToApiPath(newUri)) {
       return;
     }
@@ -270,7 +276,6 @@ class ReplFs implements vscode.FileSystemProvider {
   }
 
   async stat(uri: vscode.Uri): Promise<vscode.FileStat> {
-    console.log('stat', uriToApiPath(uri));
     const filesChannel = await this.filesChanPromise;
     const res = await filesChannel.request({
       stat: { path: uriToApiPath(uri) },
@@ -304,7 +309,6 @@ class ReplFs implements vscode.FileSystemProvider {
     content: Uint8Array,
     options: { create: boolean; overwrite: boolean },
   ): Promise<void> {
-    console.log('writeFile', uri.path, Buffer.from(content).toString('utf8'), options);
     const filesChannel = await this.filesChanPromise;
 
     // Replit's api for `write` always creates and overwrites, where as vscode expects us
@@ -364,7 +368,7 @@ class ReplFs implements vscode.FileSystemProvider {
 export class FS implements vscode.FileSystemProvider {
   private emitter: vscode.EventEmitter<vscode.FileChangeEvent[]>;
 
-  private getReplClient: (replId: string) => Promise<Client<any>>;
+  private getReplClient: (replId: string) => Promise<CrosisClient>;
 
   onDidChangeFile: vscode.Event<vscode.FileChangeEvent[]>;
 
@@ -372,12 +376,12 @@ export class FS implements vscode.FileSystemProvider {
     [replId: string]: ReplFs;
   };
 
-  constructor(getReplClient: (replId: string) => Promise<Client<any>>) {
+  constructor(getReplClient: (replId: string) => Promise<CrosisClient>) {
     this.emitter = new vscode.EventEmitter<vscode.FileChangeEvent[]>();
     this.onDidChangeFile = this.emitter.event;
     this.replFsMap = {};
-    const pendingClientReqs: { [replId: string]: Promise<Client<any>> } = {};
-    this.getReplClient = async (replId: string): Promise<Client<any>> => {
+    const pendingClientReqs: { [replId: string]: Promise<CrosisClient> } = {};
+    this.getReplClient = async (replId: string): Promise<CrosisClient> => {
       if (pendingClientReqs[replId]) {
         return pendingClientReqs[replId];
       }
@@ -401,9 +405,10 @@ export class FS implements vscode.FileSystemProvider {
     return this.addRepl(replId, client);
   }
 
-  addRepl(replId: string, client: Client<any>): ReplFs {
-    const replFs = new ReplFs(client, this.emitter);
-    console.log('created repl fs for ', replId);
+  addRepl(replId: string, client: CrosisClient): ReplFs {
+    const replFs = new ReplFs(client, this.emitter, () => {
+      delete this.replFsMap[replId];
+    });
     this.replFsMap[replId] = replFs;
 
     return replFs;
@@ -428,7 +433,6 @@ export class FS implements vscode.FileSystemProvider {
     const replId = uri.authority;
 
     const fs = this.replFsMap[replId];
-    console.log('reading ', uri.path, replId, !!fs);
 
     if (!fs) {
       throw new Error('Expected fs in replFsMap');

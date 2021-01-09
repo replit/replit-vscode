@@ -1,101 +1,14 @@
 /* eslint-disable max-classes-per-file */
 import { Client } from '@replit/crosis';
-import fetch from 'node-fetch';
-import { AbortSignal } from 'node-fetch/externals';
 import * as vscode from 'vscode';
 import ws from 'ws';
-import { GraphQLClient, gql } from 'graphql-request';
 import { FS } from './fs';
 import { Options } from './options';
 import ReplitTerminal from './shell';
-
-const gqlClient = new GraphQLClient('https://repl.it/graphql/', {});
-gqlClient.setHeaders({
-  'X-Requested-With': 'graph',
-  'user-agent': 'lol',
-  referrer: 'https://repl.it',
-});
-
-const ReplInfoFromUrlDoc = gql`
-  query ReplInfoFromUrl($url: String!) {
-    repl(url: $url) {
-      ... on Repl {
-        id
-        user {
-          username
-        }
-        slug
-      }
-    }
-  }
-`;
-
-const ReplInfoFromIdDoc = gql`
-  query ReplInfoFromUrl($id: String!) {
-    repl(id: $id) {
-      ... on Repl {
-        id
-        user {
-          username
-        }
-        slug
-      }
-    }
-  }
-`;
-
-interface ReplInfo {
-  id: string;
-  user: string;
-  slug: string;
-}
+import { CrosisClient, ReplInfo } from './types';
+import { fetchToken, getReplInfo } from './api';
 
 const BAD_KEY_MSG = 'Please enter a valid crosis key';
-
-async function getReplInfoByUrl(url: string): Promise<ReplInfo> {
-  const result = await gqlClient.request(ReplInfoFromUrlDoc, { url });
-
-  if (!result.repl) {
-    throw new Error('unexpected grqphql response for url');
-  }
-
-  return {
-    id: result.repl.id,
-    user: result.repl.user.username,
-    slug: result.repl.slug,
-  };
-}
-
-async function getReplInfoById(id: string): Promise<ReplInfo> {
-  const result = await gqlClient.request(ReplInfoFromIdDoc, { id });
-
-  if (!result.repl) {
-    throw new Error('unexpected grqphql response for url');
-  }
-
-  return {
-    id: result.repl.id,
-    user: result.repl.user.username,
-    slug: result.repl.slug,
-  };
-}
-
-export async function getReplInfo(input: string): Promise<ReplInfo> {
-  if (input.split('-').length === 5) {
-    return getReplInfoById(input);
-  }
-
-  // Check if user included full URL using a simple regex
-  const urlRegex = /(?:http(?:s?):\/\/repl\.it\/)?@(.+)\/([^?\s#]+)/g;
-  const match = urlRegex.exec(input);
-  if (!match) {
-    throw new Error('Please input in the format of @username/replname or full url of the repl');
-  }
-
-  const [, user, slug] = match;
-
-  return getReplInfoByUrl(`https://repl.it/@${user}/${slug}`);
-}
 
 // Simple key regex. No need to be strict here.
 const validKey = (key: string): boolean => !!key && /[a-zA-Z0-9/=]+:[a-zA-Z0-9/=]+/.test(key);
@@ -133,50 +46,10 @@ const ensureKey = async (store: Options): Promise<string | null> => {
   return null;
 };
 
-class TokenFetchError extends Error {
-  res: unknown;
-}
-
-async function fetchToken(
-  abortSignal: AbortSignal,
-  replId: string,
-  apiKey: string,
-): Promise<string> {
-  const r = await fetch(`https://repl.it/api/v0/repls/${replId}/token`, {
-    signal: abortSignal,
-    method: 'POST',
-    headers: {
-      accept: 'application/json',
-      'content-Type': 'application/json',
-      'user-agent': 'ezcrosis',
-      'x-requested-with': 'ezcrosis',
-    },
-    body: JSON.stringify({ apiKey }),
-  });
-  const text = await r.text();
-
-  let res;
-  try {
-    res = JSON.parse(text);
-  } catch (e) {
-    throw new Error(`Invalid JSON while fetching token for ${replId}: ${JSON.stringify(text)}`);
-  }
-
-  if (typeof res !== 'string') {
-    const err = new TokenFetchError(`Invalid token response: ${JSON.stringify(res)}`);
-    err.res = res;
-    throw err;
-  }
-  return res;
-}
-
 const openedRepls: {
   [replId: string]: {
     replInfo: ReplInfo;
-    client: Client<{
-      extensionContext: vscode.ExtensionContext;
-      replInfo: ReplInfo;
-    }>;
+    client: CrosisClient;
   };
 } = {};
 
@@ -184,14 +57,15 @@ function openReplClient(
   replInfo: ReplInfo,
   context: vscode.ExtensionContext,
   apiKey: string,
-): Client<any> {
-  console.log(`Connecting to @${replInfo.user}/${replInfo.slug}...`);
+): CrosisClient {
+  vscode.window.showInformationMessage(`Repl.it: connecting to @${replInfo.user}/${replInfo.slug}`);
 
   const client = new Client<{
     extensionContext: vscode.ExtensionContext;
     replInfo: ReplInfo;
   }>();
   client.setUnrecoverableErrorHandler((e: Error) => {
+    delete openedRepls[replInfo.id];
     console.error(e);
     vscode.window.showErrorMessage(e.message);
   });
@@ -226,14 +100,20 @@ function openReplClient(
     },
     (result) => {
       if (result.channel) {
-        vscode.window.showInformationMessage('Repl.it: Connected');
+        vscode.window.showInformationMessage(
+          `Repl.it: @${replInfo.user}/${replInfo.slug} connected`,
+        );
       }
 
       return ({ willReconnect }) => {
         if (willReconnect) {
-          vscode.window.showWarningMessage('Repl.it: Unexpected disconnect, reconnecting...');
+          vscode.window.showWarningMessage(
+            `Repl.it: @${replInfo.user}/${replInfo.slug} unexpectedly disconnected, reconnecting...`,
+          );
         } else {
-          vscode.window.showWarningMessage('Repl.it: Disconnected');
+          vscode.window.showWarningMessage(
+            `Repl.it: @${replInfo.user}/${replInfo.slug} connection permanently disconnected`,
+          );
         }
       };
     },
@@ -334,7 +214,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       }
 
       // Insert the workspace folder at the end of the workspace list
-      // otherwise the extension gets reactivated
+      // otherwise the extension gets decativated and reactivated
       const { workspaceFolders } = vscode.workspace;
       let start = 0;
       if (workspaceFolders?.length) {
@@ -350,7 +230,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 }
 
 export function deactivate(): void {
-  Object.values(openedRepls).forEach(({ client }) => {
+  Object.values(openedRepls).forEach(({ client, replInfo }) => {
+    delete openedRepls[replInfo.id];
     client.destroy();
   });
 }
