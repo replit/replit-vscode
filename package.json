@@ -13,7 +13,8 @@
   ],
   "activationEvents": [
     "onFileSystem:replit",
-    "onCommand:replit.openrepl"
+    "onCommand:replit.openrepl",
+    "onCommand:replit.apikey"
   ],
   "main": "./dist/extension.js",
   "contributes": {
