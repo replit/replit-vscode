@@ -162,6 +162,19 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   );
 
   context.subscriptions.push(
+    vscode.workspace.onDidChangeWorkspaceFolders((ev) => {
+      ev.removed.forEach((folder) => {
+        const maybeReplId = folder.uri.authority;
+
+        if (openedRepls[maybeReplId]) {
+          openedRepls[maybeReplId].client.destroy();
+          delete openedRepls[maybeReplId];
+        }
+      });
+    }),
+  );
+
+  context.subscriptions.push(
     vscode.commands.registerCommand('replit.shell', async () => {
       if (Object.values(openedRepls).length === 0) {
         return vscode.window.showErrorMessage('Please open a repl first');
