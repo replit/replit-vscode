@@ -32,6 +32,9 @@ module.exports = {
     '@typescript-eslint/no-shadow': 'error',
     '@typescript-eslint/explicit-function-return-type': 'off',
     '@typescript-eslint/no-non-null-assertion': 'error',
+    // Typescript already checks this, and respects an _ prefix meaning it is purposely
+    //  unused, while this rule does not
+    '@typescript-eslint/no-unused-vars': 'off',
     'operator-linebreak': 'off',
     'no-param-reassign': ['error', { props: false }],
     'object-curly-newline': 'off',
