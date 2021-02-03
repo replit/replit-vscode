@@ -1,7 +1,8 @@
 {
   "name": "replit",
   "displayName": "replit",
-  "description": "",
+  "description": "VS Code extension for connecting to repls using the crosis api",
+  "icon": "images/replit-vs-code-logo.png",
   "version": "0.0.3",
   "publisher": "masad-frost",
   "repository": "https://github.com/replit/replit-vscode",
