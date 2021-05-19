@@ -5,17 +5,17 @@ You must have the `developer` role on repl.it to use this extension.
 
 # How to use
 
-After installing this extension, bring up the command pallette and paste a link to the repl (or the repl's uuid). You can open multiple repls in the same workspace.
+After installing this extension, bring up the command palette and paste a link to the repl (or the repl's uuid). You can open multiple repls in the same workspace.
 
 ![](https://i.imgur.com/1liRgmn.png)
 
 If you haven't already, you will be prompted to supply an API key. You can get one from [here](https://devs.turbio.repl.co/)
 
-Once you open a repl you can start making changes to the filesystem from the filetree and the editor.
+Once you open a repl you can start making changes to the filesystem from the file tree and the editor.
 
 # Filewatching
 
-Currently the extension does not watch the repl's filesystem, so if you, or a multiplayer collaborator, are making changes on Repl.it or programatically (via shell or a running program), you won't see them propagate in VSCode in real-time. You can hit the refresh button in the filetree and the workspace should pick up the changes.
+Currently, the extension does not watch the repl's filesystem, so if you, or a multiplayer collaborator, are making changes on Repl.it or programmatically (via shell or a running program), you won't see them propagate in VSCode in real-time. You can hit the refresh button in the file tree and the workspace should pick up the changes.
 
 # Development
 
